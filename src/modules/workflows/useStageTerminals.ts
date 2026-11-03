@@ -154,11 +154,10 @@ export function useStageTerminals(
       const pty = ptyIdForLeaf(leaf);
       const started =
         input !== null && pty !== null ? whenClaudeStarted(pty) : null;
-      if (note && !writeToSession(leaf, `${note}\r`)) {
-        console.error(`[waypoint] stage terminal ${leaf} closed before launch`);
-        return;
-      }
-      if (!writeToSession(leaf, `${line}\r`)) {
+      if (
+        (note && !writeToSession(leaf, `${note}\r`)) ||
+        !writeToSession(leaf, `${line}\r`)
+      ) {
         started?.stop();
         console.error(`[waypoint] stage terminal ${leaf} closed before launch`);
         return;

@@ -51,8 +51,8 @@ export function outOfDate(
     const own = entries[stage.key]?.startedAt;
     if (stage.session !== "continue" || own == null) return;
     for (let j = 0; j < i; j++) {
-      const earlier = entries[stages[j].key]?.startedAt;
-      if (earlier != null && earlier > own) {
+      const e = entries[stages[j].key];
+      if (e && !e.unattended && e.startedAt != null && e.startedAt > own) {
         flagged[stage.key] = stages[j].key;
         return;
       }

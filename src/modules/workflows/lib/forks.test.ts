@@ -101,6 +101,16 @@ describe("out of date", () => {
   });
 });
 
+describe("out of date and unattended stages", () => {
+  it("ignores an unattended earlier stage, which leaves no session to fork", () => {
+    const entries: TerminalEntries = {
+      Grill: { ...entry(1, 40), unattended: true },
+      Spec: entry(3, 20),
+    };
+    expect(outOfDate(stages, entries)).toEqual({});
+  });
+});
+
 describe("behind", () => {
   it("targets the stage it forked, from the moment it started", () => {
     const entries: TerminalEntries = {
