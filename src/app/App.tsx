@@ -1566,6 +1566,7 @@ export default function App() {
                         onSetMarkdownView={setMarkdownView}
                         onFeatureTitle={(id, title) => updateTab(id, { title })} // fork
                         onOpenFeaturePath={(path) => handleOpenFile(path, true)} // fork
+                        onOpenMarkdown={newMarkdownTab} // fork
                       />
                     </div>
 

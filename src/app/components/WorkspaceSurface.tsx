@@ -35,6 +35,7 @@ type Props = {
   onSetMarkdownView: EditorStackProps["onSetMarkdownView"];
   onFeatureTitle: (id: number, title: string) => void; // fork
   onOpenFeaturePath: (path: string) => void; // fork
+  onOpenMarkdown: (path: string) => void; // fork
 };
 
 const LAYER = "absolute inset-0";
@@ -68,6 +69,7 @@ export function WorkspaceSurface({
   onSetMarkdownView,
   onFeatureTitle, // fork
   onOpenFeaturePath, // fork
+  onOpenMarkdown, // fork
 }: Props) {
   const kind = activeTab?.kind;
   const isTerminalTab = kind === "terminal";
@@ -131,6 +133,7 @@ export function WorkspaceSurface({
           tabs={tabs}
           activeId={activeId}
           onSetMarkdownView={onSetMarkdownView}
+          onOpenMarkdown={onOpenMarkdown} // fork
         />
       </div>
       <div
