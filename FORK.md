@@ -32,6 +32,11 @@ lists both scripts under `bundle.resources` (`ralph/run-ralph-tickets.sh`, `ralp
 the script: a `heartbeat` file in the run folder, touched every 5 s (`RALPH_HEARTBEAT_SECS` in tests).
 `.gitattributes` sets `eol=lf` for shell scripts and ticket files.
 
+The ticket reader is ported to Rust in `src-tauri/src/modules/ralph/tickets.rs` (new dependency: `regex`).
+`src-tauri/tests/ralph_tickets_agree.rs` runs `lib/tickets.sh` over the 24 fixture folders in
+`ralph/tests/fixtures/memark-tickets` (301 tickets, copied from the Ralph UI repo) and compares the
+six-column rows; it runs on Linux and macOS CI, while Windows CI runs the reader's unit tests.
+
 ## `src-tauri/tauri.windows.conf.json`
 
 - Window `title` is `WayPoint`; the `wix` (MSI) version block is removed.
