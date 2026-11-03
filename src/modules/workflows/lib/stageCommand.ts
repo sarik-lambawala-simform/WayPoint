@@ -6,6 +6,8 @@ import { normalizeRoot } from "./featurePaths";
 const SESSION_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export const isSessionId = (id: string) => SESSION_ID.test(id);
+
 function checkedId(id: string): string {
   if (!SESSION_ID.test(id)) throw new Error(`not a claude session id: ${id}`);
   return id;

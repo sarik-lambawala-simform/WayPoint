@@ -18,6 +18,7 @@ import {
   reduceTerminals,
   saveSession,
   staleFeatureDirs,
+  type TerminalAction,
   type TerminalEntries,
 } from "./lib/stageTerminals";
 
@@ -84,12 +85,16 @@ export function useStageTerminals(
   repoRoot: string,
   onUnattendedExit: (key: string) => void,
 ) {
-  const [entries, dispatch] = useReducer(
+  const [entries, dispatchRaw] = useReducer(
     reduceTerminals,
     {} as TerminalEntries,
   );
-  const entriesRef = useRef(entries);
-  entriesRef.current = entries;
+  const entriesRef = useRef<TerminalEntries>({});
+  // Applied to the ref at once too, so a second exit signal in the same tick sees the ended stage.
+  const dispatch = useCallback((action: TerminalAction) => {
+    entriesRef.current = reduceTerminals(entriesRef.current, action);
+    dispatchRaw(action);
+  }, []);
   const exitRef = useRef(onUnattendedExit);
   exitRef.current = onUnattendedExit;
 
@@ -147,7 +152,10 @@ export function useStageTerminals(
         return;
       }
       if (!started || input === null) return;
-      if (!(await started.done)) return;
+      if (!(await started.done)) {
+        console.error(`[waypoint] claude did not start in terminal ${leaf}`);
+        return;
+      }
       await sleep(CLAUDE_READY_MS);
       if (!writeToSession(leaf, input)) return;
       await sleep(SUBMIT_GAP_MS);

@@ -2,6 +2,7 @@
 // except the id file. Session ids live in the app's data folder, never in the feature folder.
 
 import { LazyStore } from "@tauri-apps/plugin-store";
+import { isSessionId } from "./stageCommand";
 
 /** Terminal tabs take their ids from a counter that starts at 3; ours start far above it. */
 export const STAGE_LEAF_BASE = 2 ** 30;
@@ -13,14 +14,12 @@ export const allocateStageLeaf = () => nextLeaf++;
 export const sessionKey = (featureDir: string, stageKey: string) =>
   `${featureDir}\u0000${stageKey}`;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** The stored `key -> id` map, keeping only entries that are well formed. */
 export function parseSessions(raw: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
   for (const [k, v] of Object.entries(raw)) {
-    if (typeof v === "string" && UUID.test(v)) out[k] = v;
+    if (typeof v === "string" && isSessionId(v)) out[k] = v;
   }
   return out;
 }
