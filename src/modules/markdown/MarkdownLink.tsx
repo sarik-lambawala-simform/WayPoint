@@ -45,7 +45,7 @@ export function MarkdownLink({
       href={href}
       onClick={handleClick}
       rel="noreferrer"
-      target={isExternalUrl(href ?? "") ? "_blank" : undefined} // fork
+      target="_blank"
     >
       {children}
     </a>

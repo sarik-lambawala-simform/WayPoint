@@ -90,7 +90,13 @@ export function MarkdownPreviewPane({
         }
       })
       .catch((e) => {
-        if (!cancelled) setStatus({ kind: "error", message: String(e) });
+        // fork: a failed re-read (a save mid-rename) keeps the content shown.
+        if (!cancelled)
+          setStatus((s) =>
+            s.kind === "ready" && reloadTick > 0
+              ? s
+              : { kind: "error", message: String(e) },
+          );
       });
     return () => {
       cancelled = true;

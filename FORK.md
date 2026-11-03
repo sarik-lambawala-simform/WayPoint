@@ -107,3 +107,10 @@ six-column rows; it runs on Linux and macOS CI, while Windows CI runs the reader
 Agent hook installs (`agent.rs`) write `__terax_notify` hooks into shared user config
 (`~/.claude`, Pi extension). Both apps rewrite the same entries to their own executable; the spec keeps the
 hook commands unchanged, so this is left for a later ticket.
+
+## Markdown tab fixes
+
+Marked `// fork:` and meant to go upstream as is: an open markdown tab reloads on `fs:changed`
+(`MarkdownPreviewPane`, with `useEditorFileSync` watching markdown paths) and relative `.md` links open in a
+new markdown tab (`MarkdownLink`, `MarkdownStack`, `WorkspaceSurface`, `App`, helpers in
+`src/modules/markdown/lib/markdownLinks.ts`). Drop them when an upstream tag includes them.
