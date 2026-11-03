@@ -30,7 +30,7 @@ fn re(pattern: &str) -> Regex {
     Regex::new(pattern).expect("static ticket-reader regex")
 }
 
-/// `^NN — ` or `^NN. ` at the start of a heading, as `title_of` strips it.
+/// `^NN` then an em-dash or a period at the start of a heading, as `title_of` strips it.
 static TITLE_NUMBER: LazyLock<Regex> =
     LazyLock::new(|| re(r"^[0-9][0-9][[:space:]]*(?:—|\.)[[:space:]]*"));
 static WAYFINDER_HEADING: LazyLock<Regex> =
@@ -105,7 +105,7 @@ pub fn status_of(text: &str) -> String {
     field_of(text, "**Status:**")
 }
 
-/// `key_of`: the status cut at the first `,`, `.` or ` — `. The rest is a note for a human.
+/// `key_of`: the status cut at the first `,`, `.` or an em-dash set off by spaces. The rest is a note for a human.
 pub fn key_of(raw: &str) -> String {
     let mut key = raw;
     if let Some(i) = key.find([',', '.']) {
@@ -147,7 +147,7 @@ pub fn is_human(file_name: &str, text: &str) -> bool {
     file_name.contains("-hitl-") || status_key_of(text) == "ready-for-human"
 }
 
-/// `title_of`: the first line with its `#` and its leading `NN — ` or `NN. ` stripped.
+/// `title_of`: the first line with its `#` and its leading `NN` and its em-dash or period stripped.
 /// Empty when the first line is not a heading.
 pub fn title_of(text: &str) -> String {
     let first = text.split('\n').next().unwrap_or("");

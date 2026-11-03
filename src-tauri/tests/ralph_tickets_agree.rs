@@ -2,7 +2,7 @@
 //! fixture ticket. They must agree on status key, blocker status key, blocker list, blocker met
 //! and title, or the app shows a ticket as ready that the loop never runs, or the other way round.
 //!
-//! Bash runs once per fixture folder and prints one six-column row per ticket. Needs `bash`, so it
+//! Bash runs once per fixture folder and prints one eight-column row (the script's six, plus wayfinder and human) per ticket. Needs `bash`, so it
 //! runs on Linux and macOS; Windows runs the reader's unit tests (CRLF fixtures, UNC paths) instead.
 
 #![cfg(unix)]
@@ -22,8 +22,10 @@ source "$1"
 ISSUES_DIR="$2"
 while IFS=$'\t' read -r num path; do
   if blockers_met "$path"; then met=yes; else met=no; fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$num" "$(status_key_of "$path")" \
-    "$(blocker_status_key_of "$path")" "$(blockers_of "$path")" "$met" "$(title_of "$path")"
+  if is_wayfinder "$path"; then wf=yes; else wf=no; fi
+  if is_human "$path"; then hu=yes; else hu=no; fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$num" "$(status_key_of "$path")" \
+    "$(blocker_status_key_of "$path")" "$(blockers_of "$path")" "$met" "$(title_of "$path")" "$wf" "$hu"
 done < <(ticket_files)"#;
 
 fn bash_rows(dir: &Path) -> Vec<String> {
@@ -65,6 +67,8 @@ fn rust_rows(dir: &Path) -> Vec<String> {
                 &t.blockers.join(" "),
                 if t.blockers_met { "yes" } else { "no" },
                 t.title.as_str(),
+                if t.wayfinder { "yes" } else { "no" },
+                if t.human { "yes" } else { "no" },
             ]
             .join("\t")
         })
