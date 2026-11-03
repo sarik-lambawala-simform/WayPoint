@@ -334,8 +334,23 @@ pub fn mark_done(issues_dir: &Path, number: &str) -> Result<String, String> {
     if !meta.is_file() {
         return Err(format!("{} is not a plain file", path.display()));
     }
-    let tmp = issues_dir.join(format!(".{number}.status.tmp"));
-    std::fs::write(&tmp, with_status_done(text)).map_err(|e| e.to_string())?;
+    // The reader decodes lossily; writing that back would replace invalid bytes on disk.
+    let on_disk = std::fs::read(&path).map_err(|e| e.to_string())?;
+    if std::str::from_utf8(&on_disk).is_err() {
+        return Err(format!("{} is not valid UTF-8", path.display()));
+    }
+    // A name of its own, so two presses never share a temp file, and `create_new` never follows
+    // a link left at that name.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let tmp = issues_dir.join(format!(".{number}.{}.{nanos}.tmp", std::process::id()));
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, with_status_done(text).as_bytes()))
+        .map_err(|e| e.to_string())?;
     let swap = std::fs::set_permissions(&tmp, meta.permissions())
         .and_then(|()| std::fs::rename(&tmp, &path));
     if let Err(e) = swap {
