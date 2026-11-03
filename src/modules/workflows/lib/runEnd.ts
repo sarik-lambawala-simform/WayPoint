@@ -77,11 +77,11 @@ export function endNotice(
       : Number.NaN;
   const end = Number.isNaN(finishedAt) ? now : finishedAt;
   const tickets = run.tickets_ended;
-  // No ticket ended, or none recorded a cost: unknown, never $0.00.
+  // No ticket ended, or none recorded a cost: unknown, never $0.00. A died run cut its last ticket, so its sum is a floor.
   const usd =
     tickets === 0 || run.cost.usd <= 0
       ? "cost unknown"
-      : `${formatUsd(run.cost.usd)}${run.cost.partial ? "+" : ""}`;
+      : `${formatUsd(run.cost.usd)}${run.cost.partial || run.status === "died" ? "+" : ""}`;
   const took =
     run.started_at_ms === null
       ? ""

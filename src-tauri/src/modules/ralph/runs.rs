@@ -419,6 +419,7 @@ fn view_run(
         RunStatus::Finished => mtime(&dir.join("state.json")).or(heartbeat),
         RunStatus::Died => heartbeat.or_else(|| mtime(&dir.join("state.json"))),
     };
+    let stop_file = dir.join(STOP_FILE);
     let empty = RunState::default();
     let s = state.unwrap_or(&empty);
     let view = RunView {
@@ -443,8 +444,8 @@ fn view_run(
             .ok()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty()),
-        stop_file: dir.join(STOP_FILE).to_string_lossy().into_owned(),
-        stop_requested: dir.join(STOP_FILE).is_file(),
+        stop_file: stop_file.to_string_lossy().into_owned(),
+        stop_requested: stop_file.is_file(),
     };
     (view, rows)
 }
