@@ -4,6 +4,7 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -52,11 +53,24 @@ fn tail(mut text: String) -> String {
     text
 }
 
-fn drain<R: Read + Send + 'static>(mut r: R) -> thread::JoinHandle<Vec<u8>> {
+type Tail = Arc<Mutex<Vec<u8>>>;
+
+/// Reads a pipe into a shared buffer that keeps only the last `MAX_OUTPUT` bytes, so a chatty
+/// command costs bounded memory and a killed check can still be read without waiting on the pipe.
+fn drain<R: Read + Send + 'static>(mut r: R, buf: Tail) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        let mut buf = Vec::new();
-        let _ = r.read_to_end(&mut buf);
-        buf
+        let mut chunk = [0u8; 4096];
+        while let Ok(n) = r.read(&mut chunk) {
+            if n == 0 {
+                break;
+            }
+            let mut b = buf.lock().unwrap_or_else(|p| p.into_inner());
+            b.extend_from_slice(&chunk[..n]);
+            if b.len() > MAX_OUTPUT * 2 {
+                let cut = b.len() - MAX_OUTPUT;
+                b.drain(..cut);
+            }
+        }
     })
 }
 
@@ -79,8 +93,15 @@ pub fn run_check(repo_root: &Path, command: &str, vars: &Vars, timeout: Duration
         Ok(c) => c,
         Err(e) => return failed(format!("could not start the command: {e}")),
     };
-    let out = child.stdout.take().map(drain);
-    let err = child.stderr.take().map(drain);
+    let out_buf = Tail::default();
+    let err_buf = Tail::default();
+    let readers: Vec<_> = [
+        child.stdout.take().map(|r| drain(r, out_buf.clone())),
+        child.stderr.take().map(|r| drain(r, err_buf.clone())),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     let started = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -94,12 +115,16 @@ pub fn run_check(repo_root: &Path, command: &str, vars: &Vars, timeout: Duration
             Err(e) => return failed(format!("could not wait for the command: {e}")),
         }
     };
-    let mut text = String::new();
-    for handle in [out, err].into_iter().flatten() {
-        if let Ok(bytes) = handle.join() {
-            text.push_str(&String::from_utf8_lossy(&bytes));
+    // A killed shell can leave grandchildren holding the pipes, so only join after a normal exit.
+    if status.is_some() {
+        for r in readers {
+            let _ = r.join();
         }
     }
+    let snapshot = |buf: &Tail| {
+        String::from_utf8_lossy(&buf.lock().unwrap_or_else(|p| p.into_inner())).into_owned()
+    };
+    let text = snapshot(&out_buf) + &snapshot(&err_buf);
     let Some(status) = status else {
         let mut output = tail(text);
         output.push_str(&format!("\n(stopped after {} s)", timeout.as_secs()));
