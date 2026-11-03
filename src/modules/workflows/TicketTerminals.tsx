@@ -406,6 +406,8 @@ function RunPicker({
   if (runs.length === 0 || !shown) return null;
   const newestId = runs[0].id;
   const value = picked?.id ?? newest?.id ?? newestId;
+  // The newest run may not have taken this ticket; it is still what the terminal replays.
+  const extra = newest && !runs.some((r) => r.id === newest.id) ? newest : null;
   return (
     <>
       <label className="flex items-center gap-1.5 text-muted-foreground">
@@ -423,6 +425,11 @@ function RunPicker({
             );
           }}
         >
+          {extra && (
+            <option value={extra.id}>
+              {runOptionLabel(extra, extra.id)} · not taken
+            </option>
+          )}
           {runs.map((r) => (
             <option key={r.id} value={r.id}>
               {runOptionLabel(r, newest?.id ?? newestId)}

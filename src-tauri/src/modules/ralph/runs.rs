@@ -414,6 +414,9 @@ fn view_run(
 /// first: the list behind a ticket terminal's "Run:" picker. A symlink or a non-file in place of
 /// the stream does not count, as in `read_ticket`.
 pub fn runs_for_ticket(repo_root: &Path, feature: &str, number: &str, env: &Env) -> Vec<RunView> {
+    if !super::ticket_read::ticket_number(number) {
+        return Vec::new();
+    }
     let logs = repo_root.join("logs");
     run_dirs(&logs)
         .into_iter()

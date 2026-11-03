@@ -44,7 +44,7 @@ fn plain_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0'])
 }
 
-fn ticket_number(n: &str) -> bool {
+pub fn ticket_number(n: &str) -> bool {
     n.len() == 2 && n.chars().all(|c| c.is_ascii_digit())
 }
 
