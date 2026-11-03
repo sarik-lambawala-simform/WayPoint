@@ -1,8 +1,41 @@
 import { native } from "@/modules/ai/lib/native";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { IS_WINDOWS } from "@/lib/platform";
+import { currentWorkspaceEnv, getWslHome } from "@/modules/workspace";
 import { featureDirOf, scratchDir } from "./featurePaths";
 import type { MapFacts, ProgressFile } from "./progress";
+import { linuxPathOfHost, wslHostPath } from "./wsl";
+
+/**
+ * The WSL distro of the space this workflow is open in, on Windows; null elsewhere. Paths in the
+ * app are Linux paths there (a repo's identity); only the calls that read files on this side turn
+ * them into `\\wsl.localhost\<distro>\...` through `hostOf`.
+ */
+export function wslDistro(): string | null {
+  const env = currentWorkspaceEnv();
+  return IS_WINDOWS && env.kind === "wsl" ? env.distro : null;
+}
+
+const hostOf = (path: string): string => {
+  const distro = wslDistro();
+  return distro ? wslHostPath(distro, path) : path;
+};
+
+const homes = new Map<string, Promise<string>>();
+
+/** Where claude keeps its sessions for a WSL space: the distro's home as this side reads it. */
+async function claudeHome(): Promise<string | null> {
+  const distro = wslDistro();
+  if (!distro) return null;
+  let home = homes.get(distro);
+  if (!home) {
+    home = getWslHome(distro).then((h) => wslHostPath(distro, h));
+    homes.set(distro, home);
+    home.catch(() => homes.delete(distro));
+  }
+  return home;
+}
 
 export type DoneWhen = "confirm" | "tickets" | "map" | { check: string };
 
@@ -52,8 +85,28 @@ export type Catalog = {
 };
 
 /** Every workflow visible from a repo: shipped, `~/.config/waypoint/workflows/`, `.workflows/`. */
-export const fetchCatalog = (repoRoot: string) =>
-  invoke<Catalog>("workflows_catalog", { repoRoot });
+export async function fetchCatalog(repoRoot: string): Promise<Catalog> {
+  const catalog = await invoke<Catalog>("workflows_catalog", {
+    repoRoot: hostOf(repoRoot),
+  });
+  const distro = wslDistro();
+  if (!distro) return catalog;
+  // A workflow found in the repo is named by its Linux path: `{{ workflow_dir }}` is typed into a
+  // terminal that runs in the distro.
+  const linux = (p: string) => linuxPathOfHost(distro, p) ?? p;
+  const ref = <T extends { path: string }>(r: T): T => ({
+    ...r,
+    path: linux(r.path),
+  });
+  return {
+    ...catalog,
+    entries: catalog.entries.map((e) =>
+      e.source === "repo"
+        ? { ...ref(e), dir: linux(e.dir), shadows: e.shadows.map(ref) }
+        : { ...e, shadows: e.shadows.map(ref) },
+    ),
+  };
+}
 
 export async function pickFolder(): Promise<string | null> {
   const picked = await open({ directory: true, multiple: false });
@@ -104,22 +157,27 @@ export type ProgressUpdate =
 
 /** The `progress.yaml` of a feature folder or of the repo root. */
 export const readProgress = (dir: string) =>
-  invoke<ProgressRead>("workflows_read_progress", { dir });
+  invoke<ProgressRead>("workflows_read_progress", { dir: hostOf(dir) });
 
 /** Writes one record to `<dir>/progress.yaml`; the only thing that ever creates the file. */
 export const recordProgress = (dir: string, update: ProgressUpdate) =>
-  invoke<ProgressFile>("workflows_record_progress", { dir, update });
+  invoke<ProgressFile>("workflows_record_progress", {
+    dir: hostOf(dir),
+    update,
+  });
 
 /** Relative paths of the files under each of `dirs` ("" is `root` itself). */
 export const listFiles = (root: string, dirs: string[]) =>
-  invoke<string[]>("workflows_list_files", { root, dirs });
+  invoke<string[]>("workflows_list_files", { root: hostOf(root), dirs });
 
 /** Names of the build tickets in `<featureDir>/issues`: human tickets count, wayfinder ones don't. */
 export const buildTickets = (featureDir: string) =>
-  invoke<string[]>("workflows_build_tickets", { featureDir });
+  invoke<string[]>("workflows_build_tickets", {
+    featureDir: hostOf(featureDir),
+  });
 
 /** Turns typed into a claude session after `since` (ISO time); null when its transcript is not on this machine. */
-export const sessionTurns = (
+export const sessionTurns = async (
   repoRoot: string,
   sessionId: string,
   since: string,
@@ -128,11 +186,16 @@ export const sessionTurns = (
     repoRoot,
     sessionId,
     since,
+    claudeHome: await claudeHome(),
   });
 
 /** For each session id, whether claude's transcript for it is on this machine. */
-export const sessionsPresent = (repoRoot: string, sessionIds: string[]) =>
-  invoke<boolean[]>("workflows_sessions_present", { repoRoot, sessionIds });
+export const sessionsPresent = async (repoRoot: string, sessionIds: string[]) =>
+  invoke<boolean[]>("workflows_sessions_present", {
+    repoRoot,
+    sessionIds,
+    claudeHome: await claudeHome(),
+  });
 
 export type CheckResult = {
   passed: boolean;
@@ -155,8 +218,16 @@ export const runCheck = (
     featureDir,
     workflowDir,
     command,
+    // The gate runs inside the distro, in the repo's Linux path.
+    distro: wslDistro(),
   });
 
 /** What the `map` gate looks at: `map.md`, the open wayfinder tickets and Not yet specified. */
 export const mapFacts = (featureDir: string) =>
-  invoke<MapFacts>("workflows_map_facts", { featureDir });
+  invoke<MapFacts>("workflows_map_facts", {
+    featureDir: hostOf(featureDir),
+  });
+
+/** What `command -v jq git curl claude` printed in the distro; rejects when wsl.exe cannot run it. */
+export const wslCheck = (distro: string) =>
+  invoke<string>("workflows_wsl_check", { distro });

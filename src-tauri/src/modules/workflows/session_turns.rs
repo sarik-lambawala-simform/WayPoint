@@ -87,9 +87,8 @@ pub fn count_turns_since(lines: impl Iterator<Item = String>, since: &str) -> u3
 }
 
 /// None when the session's transcript is not on this machine.
-pub fn turns_since(repo_root: &str, session_id: &str, since: &str) -> Option<u32> {
-    let home = dirs::home_dir()?;
-    let path = transcript_path(&home, repo_root, session_id)?;
+pub fn turns_since(home: &Path, repo_root: &str, session_id: &str, since: &str) -> Option<u32> {
+    let path = transcript_path(home, repo_root, session_id)?;
     let file = File::open(path).ok()?;
     Some(count_turns_since(
         BufReader::new(file).lines().map_while(Result::ok),

@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { FeatureTab, Tab } from "@/modules/tabs";
+import type { WorkspaceEnv } from "@/modules/workspace";
 import { useEffect, useMemo } from "react";
 import { FeaturePane } from "./FeaturePane";
 import { disposeClosedFeatures } from "./useStageTerminals";
@@ -9,10 +10,18 @@ type Props = {
   activeId: number;
   onTitle: (id: number, title: string) => void;
   onOpenPath: (path: string) => void;
+  /** Switches the active space's environment; only on an offer the user accepts. */
+  onSwitchEnv: (env: WorkspaceEnv) => void;
 };
 
 /** Every feature tab stays mounted; the active one is shown. */
-export function FeatureStack({ tabs, activeId, onTitle, onOpenPath }: Props) {
+export function FeatureStack({
+  tabs,
+  activeId,
+  onTitle,
+  onOpenPath,
+  onSwitchEnv,
+}: Props) {
   const features = useMemo(
     () => tabs.filter((t): t is FeatureTab => t.kind === "feature"),
     [tabs],
@@ -35,6 +44,7 @@ export function FeatureStack({ tabs, activeId, onTitle, onOpenPath }: Props) {
             active={t.id === activeId}
             onTitle={(title) => onTitle(t.id, title)}
             onOpenPath={onOpenPath}
+            onSwitchEnv={onSwitchEnv}
           />
         </div>
       ))}

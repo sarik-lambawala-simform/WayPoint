@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::catalog::{build_catalog, user_workflows_dir, Catalog};
-use super::check::{run_check, CheckResult};
+use super::check::{run_check, run_check_in_wsl, CheckResult};
 use super::map::{map_facts, MapFacts};
 use super::progress::{self, ProgressFile, ProgressRead, Update};
 use super::workflow::{shipped_workflow, Vars, Workflow};
@@ -72,12 +72,10 @@ pub async fn workflows_run_check(
     feature_dir: String,
     workflow_dir: String,
     command: String,
+    distro: Option<String>,
 ) -> Result<CheckResult, String> {
     tokio::task::spawn_blocking(move || {
         let root = PathBuf::from(&repo_root);
-        if !root.is_absolute() || !root.is_dir() {
-            return Err(format!("{repo_root}: not a folder"));
-        }
         let feature = PathBuf::from(&feature_dir);
         let feature = feature
             .strip_prefix(&root)
@@ -87,6 +85,24 @@ pub async fn workflows_run_check(
             feature: &feature,
             workflow_dir: &workflow_dir,
         };
+        // A space on the Windows env: the repo path is a Linux path inside the distro.
+        if let Some(distro) = distro {
+            #[cfg(windows)]
+            crate::modules::workspace::validate_wsl_distro_name(&distro)?;
+            if !repo_root.starts_with('/') {
+                return Err(format!("{repo_root}: not a Linux path"));
+            }
+            return Ok(run_check_in_wsl(
+                &distro,
+                &repo_root,
+                &command,
+                &vars,
+                CHECK_TIMEOUT,
+            ));
+        }
+        if !root.is_absolute() || !root.is_dir() {
+            return Err(format!("{repo_root}: not a folder"));
+        }
         Ok(run_check(&root, &command, &vars, CHECK_TIMEOUT))
     })
     .await
@@ -129,9 +145,11 @@ pub async fn workflows_session_turns(
     repo_root: String,
     session_id: String,
     since: String,
+    claude_home: Option<String>,
 ) -> Option<u32> {
     tokio::task::spawn_blocking(move || {
-        super::session_turns::turns_since(&repo_root, &session_id, &since)
+        let home = claude_home.map(PathBuf::from).or_else(dirs::home_dir)?;
+        super::session_turns::turns_since(&home, &repo_root, &session_id, &since)
     })
     .await
     .ok()
@@ -140,13 +158,27 @@ pub async fn workflows_session_turns(
 
 /// Whether each claude session's transcript is on this machine; all false without a home folder.
 #[tauri::command]
-pub async fn workflows_sessions_present(repo_root: String, session_ids: Vec<String>) -> Vec<bool> {
-    tokio::task::spawn_blocking(move || match dirs::home_dir() {
-        Some(home) => super::session_turns::sessions_present(&home, &repo_root, &session_ids),
-        None => vec![false; session_ids.len()],
+pub async fn workflows_sessions_present(
+    repo_root: String,
+    session_ids: Vec<String>,
+    claude_home: Option<String>,
+) -> Vec<bool> {
+    tokio::task::spawn_blocking(move || {
+        match claude_home.map(PathBuf::from).or_else(dirs::home_dir) {
+            Some(home) => super::session_turns::sessions_present(&home, &repo_root, &session_ids),
+            None => vec![false; session_ids.len()],
+        }
     })
     .await
     .unwrap_or_default()
+}
+
+/// What `command -v jq git curl claude` printed inside a WSL distro; the page lists what is absent.
+#[tauri::command]
+pub async fn workflows_wsl_check(distro: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || super::wsl::check_distro(&distro))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// The Loop stage's view of a feature now: its newest run and its build tickets.

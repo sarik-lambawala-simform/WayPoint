@@ -353,6 +353,7 @@ pub fn run() {
             workflows::commands::workflows_map_facts, // fork
             workflows::commands::workflows_session_turns, // fork
             workflows::commands::workflows_sessions_present, // fork
+            workflows::commands::workflows_wsl_check, // fork
             workflows::commands::workflows_loop_view, // fork
             workflows::commands::workflows_loop_watch, // fork
             workflows::commands::workflows_loop_unwatch, // fork

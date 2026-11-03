@@ -77,14 +77,35 @@ fn drain<R: Read + Send + 'static>(mut r: R, buf: Tail) -> thread::JoinHandle<()
 /// Runs `command` (placeholders filled in) with `repo_root` as its working folder.
 pub fn run_check(repo_root: &Path, command: &str, vars: &Vars, timeout: Duration) -> CheckResult {
     let command = substitute(command, vars);
+    let mut cmd = shell(&command);
+    cmd.current_dir(repo_root);
+    run_built(cmd, command, timeout)
+}
+
+/// Runs `command` in `linux_root` inside a WSL distro, for a space on the Windows env.
+pub fn run_check_in_wsl(
+    distro: &str,
+    linux_root: &str,
+    command: &str,
+    vars: &Vars,
+    timeout: Duration,
+) -> CheckResult {
+    let command = substitute(command, vars);
+    let mut cmd = Command::new("wsl.exe");
+    cmd.args(super::wsl::run_args(distro, linux_root, &command));
+    #[cfg(windows)]
+    crate::modules::proc::hide_console(&mut cmd);
+    run_built(cmd, command, timeout)
+}
+
+fn run_built(mut cmd: Command, command: String, timeout: Duration) -> CheckResult {
     let failed = |output: String| CheckResult {
         passed: false,
         exit_code: None,
         output,
         command: command.clone(),
     };
-    let mut child = match shell(&command)
-        .current_dir(repo_root)
+    let mut child = match cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

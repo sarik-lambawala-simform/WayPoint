@@ -8,3 +8,4 @@ pub mod map;
 pub mod progress;
 pub mod session_turns;
 pub mod workflow;
+pub mod wsl;

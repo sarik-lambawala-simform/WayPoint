@@ -33,6 +33,8 @@ import {
   stageInput,
 } from "./lib/stageCommand";
 import { Button } from "@/components/ui/button";
+import { IS_WINDOWS } from "@/lib/platform";
+import type { WorkspaceEnv } from "@/modules/workspace";
 import { LoopRunView } from "./LoopRunView";
 import { RoutePicker } from "./RoutePicker";
 import { StageBar } from "./StageBar";
@@ -47,7 +49,10 @@ import {
   useStageTerminals,
   useWorkingStages,
 } from "./useStageTerminals";
+import { useWslGate } from "./useWslGate";
 import { WorkflowList, WorkflowPicker } from "./WorkflowPicker";
+import { WslGatePanel, WslStrip } from "./WslNotices";
+import { blocksStart } from "./lib/wslGate";
 
 /** Why the shown stage did not start: it waits on the user's choice. */
 type Blocked =
@@ -64,6 +69,8 @@ type Props = {
   onTitle: (title: string) => void;
   /** Opens a produced file: `.md` in a markdown tab, anything else in an editor tab. */
   onOpenPath: (path: string) => void;
+  /** Switches the space's environment; called only when the user accepts the offer. */
+  onSwitchEnv: (env: WorkspaceEnv) => void;
 };
 
 export function FeaturePane({
@@ -73,6 +80,7 @@ export function FeaturePane({
   active,
   onTitle,
   onOpenPath,
+  onSwitchEnv,
 }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +113,7 @@ export function FeaturePane({
       active={active}
       onTitle={onTitle}
       onOpenPath={onOpenPath}
+      onSwitchEnv={onSwitchEnv}
     />
   );
 }
@@ -117,6 +126,7 @@ function LoadedPane({
   active,
   onTitle,
   onOpenPath,
+  onSwitchEnv,
 }: Props & { catalog: Catalog }) {
   const { state, record, refresh } = useFeatureProgress(
     featureDir,
@@ -131,6 +141,7 @@ function LoadedPane({
   const working = useWorkingStages(terminals.entries);
   const presence = useSessionsPresent(repoRoot, terminals.entries);
   const [blocked, setBlocked] = useState<Blocked | null>(null);
+  const wsl = useWslGate();
   /** Stages that started fresh for want of a session to continue, and what to say about it. */
   const [freshNotes, setFreshNotes] = useState<Record<string, string>>({});
   const startAgain = useRef<() => void>(() => {});
@@ -312,9 +323,19 @@ function LoadedPane({
    * with nothing to fork stops (or, for Tickets, starts from the spec); one whose earlier claude is
    * mid-turn asks first.
    */
-  const startShown = (opts: { fresh?: boolean; forkAnyway?: boolean } = {}) => {
+  const startShown = (
+    opts: { fresh?: boolean; forkAnyway?: boolean; checked?: boolean } = {},
+  ) => {
     if (!shown || input === null) return;
     if (entryOfShown?.status === "running") return;
+    // On Windows a stage starts only when the space is on WSL and the distro has its tools.
+    if (IS_WINDOWS && !opts.checked) {
+      if (wsl.gate.kind === "checking") return;
+      void wsl
+        .check()
+        .then((ok) => ok && startShown({ ...opts, checked: true }));
+      return;
+    }
     let typed = input;
     let forkFrom: string | null = null;
     let freshWhy: string | null = null;
@@ -441,6 +462,7 @@ function LoadedPane({
           {p}
         </div>
       ))}
+      <WslStrip repoRoot={repoRoot} onSwitchEnv={onSwitchEnv} />
       {progress && shown && (
         <StageHeader
           stage={shown}
@@ -490,6 +512,16 @@ function LoadedPane({
         {loopShown && (
           <div className="absolute inset-0 z-10 bg-background">
             <LoopRunView view={loopRun} />
+          </div>
+        )}
+        {blocksStart(wsl.gate) && (
+          <div className="absolute inset-0 z-20 flex flex-col bg-background">
+            <WslGatePanel
+              gate={wsl.gate}
+              onRecheck={() => startAgain.current()}
+              onDismiss={wsl.dismiss}
+              onSwitchEnv={onSwitchEnv}
+            />
           </div>
         )}
         {!loopShown && (failedHere || blockedHere || !terminalShown) && (

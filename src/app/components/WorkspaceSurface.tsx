@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import type { WorkspaceEnv } from "@/modules/workspace"; // fork
 import { cn } from "@/lib/utils";
 import { AiDiffStack, EditorStack, GitDiffStack } from "@/modules/editor";
 import { GitHistoryStack } from "@/modules/git-history";
@@ -35,6 +36,7 @@ type Props = {
   onSetMarkdownView: EditorStackProps["onSetMarkdownView"];
   onFeatureTitle: (id: number, title: string) => void; // fork
   onOpenFeaturePath: (path: string) => void; // fork
+  onSwitchEnv: (env: WorkspaceEnv) => void; // fork
   onOpenMarkdown: (path: string) => void; // fork
 };
 
@@ -69,6 +71,7 @@ export function WorkspaceSurface({
   onSetMarkdownView,
   onFeatureTitle, // fork
   onOpenFeaturePath, // fork
+  onSwitchEnv, // fork
   onOpenMarkdown, // fork
 }: Props) {
   const kind = activeTab?.kind;
@@ -178,6 +181,7 @@ export function WorkspaceSurface({
           activeId={activeId}
           onTitle={onFeatureTitle}
           onOpenPath={onOpenFeaturePath}
+          onSwitchEnv={onSwitchEnv}
         />
       </div>
     </div>
