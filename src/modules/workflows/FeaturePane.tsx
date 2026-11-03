@@ -33,12 +33,14 @@ import {
   stageInput,
 } from "./lib/stageCommand";
 import { Button } from "@/components/ui/button";
+import { LoopRunView } from "./LoopRunView";
 import { RoutePicker } from "./RoutePicker";
 import { StageBar } from "./StageBar";
 import { StageHeader } from "./StageHeader";
 import { StageTerminalHost } from "./StageTerminalHost";
 import { useBehindTurns } from "./useBehind";
 import { useFeatureProgress } from "./useFeatureProgress";
+import { useLoopRun } from "./useLoopRun";
 import { useSessionsPresent } from "./useSessionsPresent";
 import {
   useLiveStages,
@@ -143,6 +145,11 @@ function LoadedPane({
   const title = featureTabTitle(feature, progress, anyLive);
   const resolvedEntry =
     state && !("error" in state.resolved) ? state.resolved.entry : null;
+  // The Loop stage's run, watched for as long as the workflow has one, so its cell's chip is live.
+  const hasLoop = Boolean(
+    resolvedEntry?.workflow.stages.some((s) => s.run === "loop"),
+  );
+  const loopRun = useLoopRun(repoRoot, featureDir, feature, hasLoop);
   const forkStages: ForkStage[] = (resolvedEntry?.workflow.stages ?? []).map(
     (s) => ({
       key: s.name,
@@ -371,6 +378,7 @@ function LoadedPane({
   const rerunnable = Boolean(
     entryOfShown && entryOfShown.status !== "running" && input !== null,
   );
+  const loopShown = stageDef.run === "loop";
   const terminalShown = Boolean(entryOfShown && entryOfShown.leaf !== null);
   const failedHere = Boolean(failed && shown && failed.key === shown.key);
   const notStartedNote = entryOfShown
@@ -409,6 +417,7 @@ function LoadedPane({
         progress={progress}
         live={live}
         outOfDate={stale}
+        runStatus={loopRun?.run?.status ?? null}
         routePicker={
           <RoutePicker routes={routes} route={state.route} onPick={pickRoute} />
         }
@@ -468,7 +477,7 @@ function LoadedPane({
           <StageTerminalHost
             entries={terminals.entries}
             shownKey={
-              terminalShown && !failedHere && !blockedHere
+              terminalShown && !failedHere && !blockedHere && !loopShown
                 ? (shown?.key ?? null)
                 : null
             }
@@ -478,7 +487,12 @@ function LoadedPane({
             bar={endedBar}
           />
         </div>
-        {(failedHere || blockedHere || !terminalShown) && (
+        {loopShown && (
+          <div className="absolute inset-0 z-10 bg-background">
+            <LoopRunView view={loopRun} />
+          </div>
+        )}
+        {!loopShown && (failedHere || blockedHere || !terminalShown) && (
           <div className="absolute inset-0 z-10 flex flex-col bg-background">
             {failedHere && failed ? (
               <CheckOutput result={failed.result} />

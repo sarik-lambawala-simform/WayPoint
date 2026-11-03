@@ -1,7 +1,9 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { Workflow } from "./lib/api";
+import type { RunStatus } from "./lib/loopRun";
 import type { Progress } from "./lib/progress";
+import { RUN_TONE } from "./LoopRunView";
 import { StageChips } from "./StageChips";
 
 type Props = {
@@ -19,6 +21,8 @@ type Props = {
   live?: Record<string, boolean>;
   /** Forked stages that are out of date, by stage key. */
   outOfDate?: Record<string, string>;
+  /** The newest run's status, shown as a chip on the Loop's cell. */
+  runStatus?: RunStatus | null;
 };
 
 /** Workflow name and feature path first, then one cell per stage in workflow order. */
@@ -32,6 +36,7 @@ export function StageBar({
   progress,
   live,
   outOfDate,
+  runStatus,
 }: Props) {
   return (
     <div
@@ -81,6 +86,17 @@ export function StageBar({
               repoScoped={progress.stages[i].repoScoped}
               outOfDate={Boolean(outOfDate?.[stage.name])}
             />
+          )}
+          {stage.run === "loop" && runStatus && (
+            <span
+              data-testid="run-chip"
+              className={cn(
+                "shrink-0 rounded px-1.5 py-px text-[10px] leading-4",
+                RUN_TONE[runStatus],
+              )}
+            >
+              {runStatus}
+            </span>
           )}
         </button>
       ))}

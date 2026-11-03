@@ -52,6 +52,17 @@ sees them; their leaf ids start at 2^30 so they cannot collide with a tab's. Eac
 `data-terminal-stack` / `data-terminal-area`, so the WebGPU renderer gives it a canvas. The live dot is a `●` in the feature tab's title
 and a dot on the stage cell, from `useAgentActivityStore`; no upstream file changed for it.
 
+## Loop run view
+
+`src-tauri/src/modules/ralph/runs.rs` is the run model (a port of the Ralph UI's `runs.ts`, `board.ts` and the run-reading half of
+`stream.ts`): it reads `<repo>/logs/<run>/` (`state.json`, `heartbeat`, `tickets.tsv`, `ticket-NN.jsonl`) and joins it with the ticket
+reader. Live is a phase other than `finished` with a heartbeat under 30 s old; died is the same phase with an older one, or a dead script
+pid (Linux and macOS, the faster signal for a `kill -9`). `ralph/watch.rs` re-reads on `notify` events plus a 1 s timer and sends the
+view only when it changed; macOS has no `notify` in this build (it uses FSEvents directly), so the timer alone drives it there. The
+commands are `workflows_loop_view`, `workflows_loop_watch` and `workflows_loop_unwatch`; the page side is `useLoopRun`,
+`LoopRunView.tsx` and the pure `lib/loopRun.ts`. `FeaturePane.tsx` shows the view on a `run: loop` stage and `StageBar.tsx` carries the
+run status chip. `src-tauri/tests/ralph_runs.rs` drives the real script with the fake `claude` and `curl`.
+
 ## `.github/workflows/release.yml`
 
 - `create-release` makes the draft release and reads the upstream tag from the "based on release tag" line at the top of this file, so keep that sentence's wording.

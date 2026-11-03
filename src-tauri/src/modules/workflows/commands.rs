@@ -5,7 +5,9 @@ use super::check::{run_check, CheckResult};
 use super::map::{map_facts, MapFacts};
 use super::progress::{self, ProgressFile, ProgressRead, Update};
 use super::workflow::{shipped_workflow, Vars, Workflow};
+use crate::modules::ralph::runs::{read_loop_view, script_alive, Env, LoopView};
 use crate::modules::ralph::tickets::read_tickets;
+use crate::modules::ralph::watch::{unwatch, watch_loop};
 
 const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -145,6 +147,52 @@ pub async fn workflows_sessions_present(repo_root: String, session_ids: Vec<Stri
     })
     .await
     .unwrap_or_default()
+}
+
+/// The Loop stage's view of a feature now: its newest run and its build tickets.
+#[tauri::command]
+pub async fn workflows_loop_view(
+    repo_root: String,
+    feature_dir: String,
+    feature: String,
+) -> Option<LoopView> {
+    tokio::task::spawn_blocking(move || {
+        let (repo, dir) = (PathBuf::from(repo_root), PathBuf::from(feature_dir));
+        if !repo.is_absolute() || !dir.is_absolute() {
+            return None;
+        }
+        let env = Env {
+            now: std::time::SystemTime::now(),
+            pid_alive: &script_alive,
+        };
+        Some(read_loop_view(&repo, &dir, &feature, &env))
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// Streams the Loop view to the page now and after every change; returns the id for
+/// `workflows_loop_unwatch`.
+#[tauri::command]
+pub fn workflows_loop_watch(
+    repo_root: String,
+    feature_dir: String,
+    feature: String,
+    on_view: tauri::ipc::Channel<LoopView>,
+) -> Result<u32, String> {
+    let (repo, dir) = (PathBuf::from(&repo_root), PathBuf::from(&feature_dir));
+    if !repo.is_absolute() || !dir.is_absolute() {
+        return Err("the repo and feature paths must be absolute".into());
+    }
+    Ok(watch_loop(repo, dir, feature, move |view| {
+        on_view.send(view).is_ok()
+    }))
+}
+
+#[tauri::command]
+pub fn workflows_loop_unwatch(id: u32) {
+    unwatch(id);
 }
 
 pub fn build_tickets(issues_dir: &std::path::Path) -> Vec<String> {

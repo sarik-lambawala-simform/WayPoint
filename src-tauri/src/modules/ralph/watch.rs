@@ -1,0 +1,139 @@
+//! Watching a feature's runs. Linux and Windows: `notify` on `<repo>/logs` (new runs) and on the
+//! newest run folder (its state, heartbeat, results and streams), plus a 1 s timer, which is what
+//! notices a heartbeat going stale. macOS has no `notify` in this build, so the timer alone drives
+//! it. Every wake-up reads the run model again and sends the view only when it changed.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, SystemTime};
+
+use super::runs::{read_loop_view, script_alive, Env, LoopView};
+
+const TICK: Duration = Duration::from_secs(1);
+/// Events of one burst (a stream line, a state swap) are read once.
+const SETTLE: Duration = Duration::from_millis(80);
+
+static NEXT: AtomicU32 = AtomicU32::new(1);
+
+fn registry() -> &'static Mutex<HashMap<u32, Arc<AtomicBool>>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<u32, Arc<AtomicBool>>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Starts watching; `on_view` gets the view now and after each change, and returns false to stop.
+/// The returned id is for `unwatch`.
+pub fn watch_loop(
+    repo_root: PathBuf,
+    feature_dir: PathBuf,
+    feature: String,
+    on_view: impl Fn(LoopView) -> bool + Send + 'static,
+) -> u32 {
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let stop = Arc::new(AtomicBool::new(false));
+    if let Ok(mut all) = registry().lock() {
+        all.insert(id, stop.clone());
+    }
+    std::thread::spawn(move || {
+        let (tx, rx) = mpsc::channel::<()>();
+        let mut watches = Watches::new(tx.clone());
+        watches.add(&repo_root.join("logs"), false);
+        let mut last: Option<LoopView> = None;
+        while !stop.load(Ordering::Relaxed) {
+            let env = Env {
+                now: SystemTime::now(),
+                pid_alive: &script_alive,
+            };
+            let view = read_loop_view(&repo_root, &feature_dir, &feature, &env);
+            watches.follow(view.run.as_ref().map(|r| Path::new(&r.dir)));
+            if last.as_ref() != Some(&view) {
+                if !on_view(view.clone()) {
+                    break;
+                }
+                last = Some(view);
+            }
+            if rx.recv_timeout(TICK).is_ok() {
+                std::thread::sleep(SETTLE);
+                while rx.try_recv().is_ok() {}
+            }
+        }
+        if let Ok(mut all) = registry().lock() {
+            all.remove(&id);
+        }
+    });
+    id
+}
+
+/// Stops a watch; the thread ends within a second.
+pub fn unwatch(id: u32) {
+    if let Some(stop) = registry().lock().ok().and_then(|all| all.get(&id).cloned()) {
+        stop.store(true, Ordering::Relaxed);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+struct Watches {
+    watcher: Option<notify::RecommendedWatcher>,
+    run: Option<PathBuf>,
+}
+
+#[cfg(not(target_os = "macos"))]
+impl Watches {
+    fn new(tx: mpsc::Sender<()>) -> Self {
+        use notify::{Config, Event, EventKind, RecommendedWatcher};
+        let watcher = RecommendedWatcher::new(
+            move |result: notify::Result<Event>| {
+                if let Ok(event) = result {
+                    if !matches!(event.kind, EventKind::Access(_)) {
+                        let _ = tx.send(());
+                    }
+                }
+            },
+            Config::default(),
+        )
+        .ok();
+        Self { watcher, run: None }
+    }
+
+    /// Watches a folder that may not exist yet; the timer picks it up later.
+    fn add(&mut self, dir: &Path, recursive: bool) {
+        use notify::{RecursiveMode, Watcher};
+        let mode = if recursive {
+            RecursiveMode::Recursive
+        } else {
+            RecursiveMode::NonRecursive
+        };
+        if let Some(w) = self.watcher.as_mut() {
+            let _ = w.watch(dir, mode);
+        }
+    }
+
+    /// Moves the recursive watch to the newest run folder.
+    fn follow(&mut self, run: Option<&Path>) {
+        use notify::Watcher;
+        if self.run.as_deref() == run {
+            return;
+        }
+        if let (Some(old), Some(w)) = (self.run.take(), self.watcher.as_mut()) {
+            let _ = w.unwatch(&old);
+        }
+        if let Some(run) = run {
+            self.add(run, true);
+            self.run = Some(run.to_path_buf());
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct Watches;
+
+#[cfg(target_os = "macos")]
+impl Watches {
+    fn new(_tx: mpsc::Sender<()>) -> Self {
+        Self
+    }
+    fn add(&mut self, _dir: &Path, _recursive: bool) {}
+    fn follow(&mut self, _run: Option<&Path>) {}
+}
