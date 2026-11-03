@@ -14,6 +14,10 @@ type Props = {
   onRecheck?: () => void;
   /** True while a check is running. */
   checking?: boolean;
+  /** The fork is older than an earlier stage's session: what to say and how to re-run. */
+  outOfDate?: { earlier: string; canRerun: boolean; onRerun: () => void };
+  /** "Grill has 2 more turns since Spec forked"; shown softly, the stage is not out of date. */
+  behind?: string | null;
 };
 
 /** One line under the stage bar: the stage, its chips, what it produced, and what to do next. */
@@ -27,13 +31,40 @@ export function StageHeader({
   onSkip,
   onRecheck,
   checking = false,
+  outOfDate,
+  behind,
 }: Props) {
   const literal = stage.produces.filter((p) => !p.includes("*"));
   const missing = literal.filter((p) => !stage.produced.includes(p));
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-3 py-1.5 text-xs">
       <span className="font-medium">{stage.name}</span>
-      <StageChips state={stage.state} repoScoped={stage.repoScoped} />
+      <StageChips
+        state={stage.state}
+        repoScoped={stage.repoScoped}
+        outOfDate={Boolean(outOfDate)}
+      />
+      {outOfDate && (
+        <span className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+          {outOfDate.earlier} was started again after {stage.name} forked it.
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={!outOfDate.canRerun}
+            title={
+              outOfDate.canRerun
+                ? undefined
+                : `${stage.name}'s claude is running`
+            }
+            onClick={outOfDate.onRerun}
+          >
+            Re-run {stage.name}
+          </Button>
+        </span>
+      )}
+      {behind && (
+        <span className="text-[11px] text-muted-foreground">{behind}</span>
+      )}
       {stage.markedAt && (
         <span
           className="text-[11px] text-muted-foreground"

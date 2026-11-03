@@ -11,7 +11,13 @@ import {
   whenSessionReady,
   writeToSession,
 } from "@/modules/terminal";
-import { freshLine, resumeLine, unattendedLine } from "./lib/stageCommand";
+import {
+  forkLine,
+  freshLine,
+  rerunNote,
+  resumeLine,
+  unattendedLine,
+} from "./lib/stageCommand";
 import {
   allocateStageLeaf,
   loadFeatureSessions,
@@ -73,6 +79,8 @@ export type StartRequest = {
   /** `/<skill> <args>` or the prompt; typed into claude once it is up. */
   input: string;
   unattended: boolean;
+  /** The session this stage forks (`session: continue`); null starts a fresh session. */
+  forkFrom?: string | null;
 };
 
 /**
@@ -101,7 +109,7 @@ export function useStageTerminals(
   useEffect(() => {
     let live = true;
     loadFeatureSessions(featureDir).then(
-      (ids) => live && dispatch({ type: "restore", ids }),
+      ({ ids, starts }) => live && dispatch({ type: "restore", ids, starts }),
       (e) => console.error("could not read the stage sessions", e),
     );
     return () => {
@@ -137,7 +145,7 @@ export function useStageTerminals(
 
   /** Types `line` once the terminal's shell is ready, then `input` once claude is up. */
   const launch = useCallback(
-    async (leaf: number, line: string, input: string | null) => {
+    async (leaf: number, line: string, input: string | null, note?: string) => {
       await native.workspaceAuthorize(repoRoot).catch(() => {});
       await invoke("agent_enable_hooks", { agent: "claude" }).catch((e) =>
         console.warn("[waypoint] could not enable claude notifications:", e),
@@ -146,6 +154,10 @@ export function useStageTerminals(
       const pty = ptyIdForLeaf(leaf);
       const started =
         input !== null && pty !== null ? whenClaudeStarted(pty) : null;
+      if (note && !writeToSession(leaf, `${note}\r`)) {
+        console.error(`[waypoint] stage terminal ${leaf} closed before launch`);
+        return;
+      }
       if (!writeToSession(leaf, `${line}\r`)) {
         started?.stop();
         console.error(`[waypoint] stage terminal ${leaf} closed before launch`);
@@ -164,21 +176,33 @@ export function useStageTerminals(
     [repoRoot],
   );
 
+  /**
+   * Starts a stage, or re-runs it when it has an entry: only while its claude is not running. A
+   * re-run takes a new session id (forked again from `forkFrom`) and keeps the shell it has.
+   */
   const start = useCallback(
-    ({ key, input, unattended }: StartRequest) => {
+    ({ key, input, unattended, forkFrom }: StartRequest) => {
+      const previous = entriesRef.current[key];
+      if (previous?.status === "running") return;
       const sessionId = crypto.randomUUID();
-      const leaf = allocateStageLeaf();
-      remember(featureDir, leaf);
-      dispatch({ type: "start", key, sessionId, leaf, unattended });
+      const startedAt = Date.now();
+      const leaf = previous?.leaf ?? allocateStageLeaf();
+      if (previous?.leaf == null) remember(featureDir, leaf);
+      dispatch({ type: "start", key, sessionId, startedAt, leaf, unattended });
       if (!unattended)
-        void saveSession(featureDir, key, sessionId).catch((e) =>
+        void saveSession(featureDir, key, sessionId, startedAt).catch((e) =>
           console.error("could not store the stage session", e),
         );
-      void launch(
-        leaf,
-        unattended ? unattendedLine(input) : freshLine(sessionId),
-        unattended ? null : input,
-      );
+      const line = unattended
+        ? unattendedLine(input)
+        : forkFrom
+          ? forkLine(forkFrom, sessionId)
+          : freshLine(sessionId);
+      const note =
+        previous && !previous.unattended
+          ? rerunNote(previous.sessionId)
+          : undefined;
+      void launch(leaf, line, unattended ? null : input, note);
     },
     [featureDir, launch],
   );

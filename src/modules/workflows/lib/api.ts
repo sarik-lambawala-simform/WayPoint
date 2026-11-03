@@ -118,6 +118,18 @@ export const listFiles = (root: string, dirs: string[]) =>
 export const buildTickets = (featureDir: string) =>
   invoke<string[]>("workflows_build_tickets", { featureDir });
 
+/** Turns typed into a claude session after `since` (ISO time); null when its transcript is not on this machine. */
+export const sessionTurns = (
+  repoRoot: string,
+  sessionId: string,
+  since: string,
+) =>
+  invoke<number | null>("workflows_session_turns", {
+    repoRoot,
+    sessionId,
+    since,
+  });
+
 export type CheckResult = {
   passed: boolean;
   /** Null when the command did not start, timed out or was killed. */

@@ -17,6 +17,8 @@ type Props = {
   progress?: Progress | null;
   /** Stage keys that have a claude running in their terminal. */
   live?: Record<string, boolean>;
+  /** Forked stages that are out of date, by stage key. */
+  outOfDate?: Record<string, string>;
 };
 
 /** Workflow name and feature path first, then one cell per stage in workflow order. */
@@ -29,6 +31,7 @@ export function StageBar({
   routePicker,
   progress,
   live,
+  outOfDate,
 }: Props) {
   return (
     <div
@@ -76,6 +79,7 @@ export function StageBar({
             <StageChips
               state={progress.stages[i].state}
               repoScoped={progress.stages[i].repoScoped}
+              outOfDate={Boolean(outOfDate?.[stage.name])}
             />
           )}
         </button>

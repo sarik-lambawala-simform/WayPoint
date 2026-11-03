@@ -19,6 +19,14 @@ export const freshLine = (id: string) => `claude --session-id ${checkedId(id)}`;
 /** The stage's own session again; nothing is typed afterwards. */
 export const resumeLine = (id: string) => `claude --resume ${checkedId(id)}`;
 
+/** A forked session: the previous stage's session, branched under a new id of the app's choosing. */
+export const forkLine = (fromId: string, newId: string) =>
+  `claude --resume ${checkedId(fromId)} --fork-session --session-id ${checkedId(newId)}`;
+
+/** Typed into the shell before a re-run: the replaced session is kept, not deleted. It avoids the word the agent detector arms on. */
+export const rerunNote = (oldId: string) =>
+  `echo "Re-running: the previous session ${checkedId(oldId)} stays on disk."`;
+
 /** An unattended stage: one `claude -p` run whose exit ends the stage's turn. */
 export const unattendedLine = (command: string) =>
   `claude -p "${command.replace(/[\\"$`]/g, "\\$&")}"`;

@@ -16,12 +16,21 @@ import {
   routesOf,
   type StageProgress,
 } from "./lib/progress";
+import {
+  behindNote,
+  behindTarget,
+  forkFromId,
+  type ForkStage,
+  outOfDate as outOfDateOf,
+  rerunClearsConfirmed,
+} from "./lib/forks";
 import { featureRel, stageInput } from "./lib/stageCommand";
 import { Button } from "@/components/ui/button";
 import { RoutePicker } from "./RoutePicker";
 import { StageBar } from "./StageBar";
 import { StageHeader } from "./StageHeader";
 import { StageTerminalHost } from "./StageTerminalHost";
+import { useBehindTurns } from "./useBehind";
 import { useFeatureProgress } from "./useFeatureProgress";
 import { useLiveStages, useStageTerminals } from "./useStageTerminals";
 import { WorkflowList, WorkflowPicker } from "./WorkflowPicker";
@@ -109,6 +118,21 @@ function LoadedPane({
   const [checking, setChecking] = useState(false);
   const progress = state?.progress ?? null;
   const title = featureTabTitle(feature, progress, anyLive);
+  const resolvedEntry =
+    state && !("error" in state.resolved) ? state.resolved.entry : null;
+  const forkStages: ForkStage[] = (resolvedEntry?.workflow.stages ?? []).map(
+    (s) => ({
+      key: s.name,
+      session: effectiveStage(s, state?.route ?? null).session,
+    }),
+  );
+  const stale = outOfDateOf(forkStages, terminals.entries);
+  const shownIndex = Math.min(
+    selected ?? progress?.current ?? progress?.lastPassed ?? 0,
+    Math.max(forkStages.length - 1, 0),
+  );
+  const behindOf = behindTarget(forkStages, terminals.entries, shownIndex);
+  const behindTurns = useBehindTurns(repoRoot, behindOf);
 
   const onTitleRef = useRef(onTitle);
   onTitleRef.current = onTitle;
@@ -236,6 +260,27 @@ function LoadedPane({
     workflowDir: entry.dir,
   });
   const entryOfShown = shown ? terminals.entries[shown.key] : undefined;
+  const forkFrom = forkFromId(forkStages, terminals.entries, index);
+  const unattendedStage = stageDef.mode === "unattended";
+  /** Starts the shown stage; a re-run first clears the stage's own confirmed mark. */
+  const startShown = () => {
+    if (!shown || input === null) return;
+    if (entryOfShown?.status === "running") return;
+    if (entryOfShown && rerunClearsConfirmed(shown))
+      void record(
+        { kind: "mark", stage: shown.key, mark: "clear", at: now() },
+        markDir,
+      );
+    terminals.start({
+      key: shown.key,
+      input,
+      unattended: unattendedStage,
+      forkFrom,
+    });
+  };
+  const rerunnable = Boolean(
+    entryOfShown && entryOfShown.status !== "running" && input !== null,
+  );
   const terminalShown = Boolean(entryOfShown && entryOfShown.leaf !== null);
   const failedHere = Boolean(failed && shown && failed.key === shown.key);
   const notStartedNote = entryOfShown
@@ -254,6 +299,11 @@ function LoadedPane({
             Resume
           </Button>
         )}
+        {rerunnable && (
+          <Button size="xs" variant="outline" onClick={startShown}>
+            Re-run {shown.name}
+          </Button>
+        )}
       </div>
     ) : null;
 
@@ -266,6 +316,7 @@ function LoadedPane({
         onSelect={setSelected}
         progress={progress}
         live={live}
+        outOfDate={stale}
         routePicker={
           <RoutePicker routes={routes} route={state.route} onPick={pickRoute} />
         }
@@ -300,6 +351,20 @@ function LoadedPane({
           onNext={() => void onNext()}
           onRecheck={() => void check()}
           checking={checking}
+          outOfDate={
+            stale[shown.key]
+              ? {
+                  earlier: stale[shown.key],
+                  canRerun: rerunnable,
+                  onRerun: startShown,
+                }
+              : undefined
+          }
+          behind={
+            behindOf && !stale[shown.key]
+              ? behindNote(behindOf.parentKey, shown.name, behindTurns)
+              : null
+          }
           onDone={() => void mark("confirmed")}
           onSkip={() => void mark("skipped")}
         />
@@ -329,19 +394,14 @@ function LoadedPane({
                     Resume {shown.name}
                   </Button>
                 )}
+                {rerunnable && shown && (
+                  <Button size="sm" variant="outline" onClick={startShown}>
+                    Re-run {shown.name}
+                  </Button>
+                )}
                 {!entryOfShown && input !== null && shown && (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      terminals.start({
-                        key: shown.key,
-                        input,
-                        unattended: stageDef.mode === "unattended",
-                      })
-                    }
-                  >
-                    {stageDef.mode === "unattended" ? "Run" : "Start"}{" "}
-                    {shown.name}
+                  <Button size="sm" onClick={startShown}>
+                    {unattendedStage ? "Run" : "Start"} {shown.name}
                   </Button>
                 )}
                 {hasRouteOverride(workflow.stages[index]) && (

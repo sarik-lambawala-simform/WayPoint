@@ -28,10 +28,22 @@ export function parseSessions(raw: unknown): Record<string, string> {
 export const staleFeatureDirs = (known: string[], open: Set<string>) =>
   known.filter((d) => !open.has(d));
 
+/** The stored `key -> start time` map, keeping only finite numbers. */
+export function parseStarts(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
+}
+
 export type TerminalStatus = "running" | "ended";
 
 export type TerminalEntry = {
   sessionId: string;
+  /** When this session was started (ms since the epoch); null for one stored without it. */
+  startedAt: number | null;
   /** The terminal showing the stage; null when it is not on this run of the app. */
   leaf: number | null;
   status: TerminalStatus;
@@ -43,11 +55,16 @@ export type TerminalEntry = {
 export type TerminalEntries = Record<string, TerminalEntry>;
 
 export type TerminalAction =
-  | { type: "restore"; ids: Record<string, string> }
+  | {
+      type: "restore";
+      ids: Record<string, string>;
+      starts?: Record<string, number>;
+    }
   | {
       type: "start";
       key: string;
       sessionId: string;
+      startedAt: number;
       leaf: number;
       unattended: boolean;
     }
@@ -66,6 +83,7 @@ export function reduceTerminals(
         if (next[key]) continue;
         next[key] = {
           sessionId,
+          startedAt: action.starts?.[key] ?? null,
           leaf: null,
           status: "ended",
           unattended: false,
@@ -78,6 +96,7 @@ export function reduceTerminals(
         ...state,
         [action.key]: {
           sessionId: action.sessionId,
+          startedAt: action.startedAt,
           leaf: action.leaf,
           status: "running",
           unattended: action.unattended,
@@ -110,6 +129,7 @@ const store = new LazyStore("waypoint-stage-sessions.json", {
   autoSave: 200,
 });
 const KEY = "sessions";
+const STARTS_KEY = "started";
 
 export async function loadSessions(): Promise<Record<string, string>> {
   return parseSessions(await store.get<unknown>(KEY));
@@ -122,24 +142,35 @@ export function saveSession(
   featureDir: string,
   stageKey: string,
   sessionId: string,
+  startedAt: number,
 ): Promise<void> {
   const next = writes.then(async () => {
     const all = await loadSessions();
-    all[sessionKey(featureDir, stageKey)] = sessionId;
+    const starts = parseStarts(await store.get<unknown>(STARTS_KEY));
+    const key = sessionKey(featureDir, stageKey);
+    all[key] = sessionId;
+    starts[key] = startedAt;
     await store.set(KEY, all);
+    await store.set(STARTS_KEY, starts);
   });
   writes = next.catch(() => {});
   return next;
 }
 
-/** The ids stored for one feature folder, by stage key. */
+/** The ids and start times stored for one feature folder, by stage key. */
 export async function loadFeatureSessions(
   featureDir: string,
-): Promise<Record<string, string>> {
+): Promise<{ ids: Record<string, string>; starts: Record<string, number> }> {
   const prefix = `${featureDir}\u0000`;
-  const out: Record<string, string> = {};
+  const ids: Record<string, string> = {};
+  const starts: Record<string, number> = {};
   for (const [k, id] of Object.entries(await loadSessions())) {
-    if (k.startsWith(prefix)) out[k.slice(prefix.length)] = id;
+    if (k.startsWith(prefix)) ids[k.slice(prefix.length)] = id;
   }
-  return out;
+  for (const [k, t] of Object.entries(
+    parseStarts(await store.get<unknown>(STARTS_KEY)),
+  )) {
+    if (k.startsWith(prefix)) starts[k.slice(prefix.length)] = t;
+  }
+  return { ids, starts };
 }

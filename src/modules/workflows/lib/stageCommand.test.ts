@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   featureRel,
+  forkLine,
   freshLine,
+  rerunNote,
   resumeLine,
   stageInput,
   substituteVars,
@@ -9,10 +11,31 @@ import {
 } from "./stageCommand";
 
 const ID = "6f1c2a52-8c0e-4a1f-9d57-3b1d3a0f6a11";
+const OTHER = "0a1c2a52-8c0e-4a1f-9d57-3b1d3a0f6a22";
 
 describe("the claude command lines", () => {
   it("starts a fresh session with the id the app picked", () => {
     expect(freshLine(ID)).toBe(`claude --session-id ${ID}`);
+  });
+
+  it("forks the previous stage's session under a new id the app picked", () => {
+    expect(forkLine(ID, OTHER)).toBe(
+      `claude --resume ${ID} --fork-session --session-id ${OTHER}`,
+    );
+  });
+
+  it("refuses to fork from or into anything but a uuid", () => {
+    expect(() => forkLine("x", OTHER)).toThrow();
+    expect(() => forkLine(ID, "$(x)")).toThrow();
+  });
+
+  it("says in the terminal that a re-run keeps the old session on disk", () => {
+    const note = rerunNote(ID);
+    expect(note).toBe(
+      `echo "Re-running: the previous session ${ID} stays on disk."`,
+    );
+    expect(note).not.toMatch(/claude/);
+    expect(() => rerunNote("a; b")).toThrow();
   });
 
   it("resumes a stage's own session and nothing else", () => {

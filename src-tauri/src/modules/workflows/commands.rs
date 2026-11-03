@@ -121,6 +121,21 @@ pub async fn workflows_map_facts(feature_dir: String) -> MapFacts {
     .unwrap_or_default()
 }
 
+/// Turns the user typed into a claude session after `since`; null when its transcript is not here.
+#[tauri::command]
+pub async fn workflows_session_turns(
+    repo_root: String,
+    session_id: String,
+    since: String,
+) -> Option<u32> {
+    tokio::task::spawn_blocking(move || {
+        super::session_turns::turns_since(&repo_root, &session_id, &since)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
 pub fn build_tickets(issues_dir: &std::path::Path) -> Vec<String> {
     read_tickets(issues_dir)
         .unwrap_or_default()

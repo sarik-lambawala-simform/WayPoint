@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateStageLeaf,
   parseSessions,
+  parseStarts,
   reduceTerminals,
   sessionKey,
   STAGE_LEAF_BASE,
@@ -36,6 +37,11 @@ describe("stage terminal ids", () => {
     expect(parseSessions([A])).toEqual({});
   });
 
+  it("keeps only finite start times from the stored file", () => {
+    expect(parseStarts({ a: 5, b: "x", c: null })).toEqual({ a: 5 });
+    expect(parseStarts([1])).toEqual({});
+  });
+
   it("finds the feature folders that lost their tab", () => {
     expect(staleFeatureDirs(["/a", "/b", "/c"], new Set(["/b"]))).toEqual([
       "/a",
@@ -51,6 +57,7 @@ describe("the terminals of a feature", () => {
     const s = reduceTerminals(none, { type: "restore", ids: { Grill: A } });
     expect(s.Grill).toEqual({
       sessionId: A,
+      startedAt: null,
       leaf: null,
       status: "ended",
       unattended: false,
@@ -62,11 +69,13 @@ describe("the terminals of a feature", () => {
       type: "start",
       key: "Grill",
       sessionId: A,
+      startedAt: 1,
       leaf: 7,
       unattended: false,
     });
     expect(s.Grill).toEqual({
       sessionId: A,
+      startedAt: 1,
       leaf: 7,
       status: "running",
       unattended: false,
@@ -78,6 +87,7 @@ describe("the terminals of a feature", () => {
       type: "start",
       key: "Grill",
       sessionId: A,
+      startedAt: 1,
       leaf: 7,
       unattended: false,
     });
@@ -91,6 +101,7 @@ describe("the terminals of a feature", () => {
       type: "start",
       key: "Grill",
       sessionId: A,
+      startedAt: 1,
       leaf: 7,
       unattended: false,
     });
@@ -99,13 +110,26 @@ describe("the terminals of a feature", () => {
       status: "ended",
       leaf: null,
       sessionId: A,
+      startedAt: 1,
     });
   });
 
   it("resumes in the live terminal, or in a new one when there is none", () => {
     const ended: TerminalEntries = {
-      Grill: { sessionId: A, leaf: 7, status: "ended", unattended: false },
-      Spec: { sessionId: B, leaf: null, status: "ended", unattended: false },
+      Grill: {
+        sessionId: A,
+        startedAt: 1,
+        leaf: 7,
+        status: "ended",
+        unattended: false,
+      },
+      Spec: {
+        sessionId: B,
+        startedAt: 2,
+        leaf: null,
+        status: "ended",
+        unattended: false,
+      },
     };
     const live = reduceTerminals(ended, {
       type: "resume",
@@ -122,6 +146,42 @@ describe("the terminals of a feature", () => {
       status: "running",
       leaf: 9,
       sessionId: B,
+      startedAt: 2,
+    });
+  });
+
+  it("restores the start times next to the ids", () => {
+    const s = reduceTerminals(none, {
+      type: "restore",
+      ids: { Grill: A },
+      starts: { Grill: 99 },
+    });
+    expect(s.Grill.startedAt).toBe(99);
+  });
+
+  it("replaces the id, the start time and the status when a stage is started again", () => {
+    const ended: TerminalEntries = {
+      Spec: {
+        sessionId: A,
+        startedAt: 1,
+        leaf: 7,
+        status: "ended",
+        unattended: false,
+      },
+    };
+    const s = reduceTerminals(ended, {
+      type: "start",
+      key: "Spec",
+      sessionId: B,
+      startedAt: 5,
+      leaf: 7,
+      unattended: false,
+    });
+    expect(s.Spec).toMatchObject({
+      sessionId: B,
+      startedAt: 5,
+      leaf: 7,
+      status: "running",
     });
   });
 
@@ -130,6 +190,7 @@ describe("the terminals of a feature", () => {
       type: "start",
       key: "Grill",
       sessionId: A,
+      startedAt: 1,
       leaf: 7,
       unattended: false,
     });
