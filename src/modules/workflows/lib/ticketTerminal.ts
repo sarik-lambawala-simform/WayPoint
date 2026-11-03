@@ -3,6 +3,7 @@
 // successive states into the smallest terminal output. The terminal shows the run and never hosts
 // it: everything here comes from the run folder.
 
+import { isDoneStatus } from "./humanTicket";
 import type { RunView, TicketRow } from "./loopRun";
 import { formatDuration, formatUsd } from "./loopRun";
 
@@ -78,7 +79,9 @@ export function phaseNote(
 ): string | null {
   switch (phase.kind) {
     case "human":
-      return `Ticket ${ticket.number} is for a human. The script never takes it.`;
+      return `Ticket ${ticket.number} is for a human. The script never takes it.${
+        isDoneStatus(ticket.status) ? `\n**Status:** ${ticket.status}` : ""
+      }`;
     case "no-run":
       return "No run of this feature yet.";
     case "waiting":

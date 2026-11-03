@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button";
 import { IS_LINUX } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { startLoop, stopLoop } from "./lib/api";
+import { markTicketDone, startLoop, stopLoop } from "./lib/api";
+import { isDoneStatus, unblockedBy, unblockedText } from "./lib/humanTicket";
 import {
   DEFAULT_LAUNCH,
   type LaunchContext,
@@ -20,6 +21,7 @@ import {
   diedNote,
   formatDuration,
   type LoopRunView as View,
+  type TicketRow,
   runCostText,
   runElapsedSeconds,
   type RunStatus,
@@ -35,6 +37,8 @@ export type LaunchTarget = {
   /** Live runs of the repo, whatever feature they work on. */
   live: LiveRun[];
   onStarted: () => void;
+  /** A ticket file was written here, so what reads the tickets should read them again. */
+  onTicketsChanged?: () => void;
 };
 
 export const RUN_TONE: Record<RunStatus, string> = {
@@ -66,6 +70,12 @@ export function LoopRunView({
   // The run id whose stop was asked for here, so "Stopping…" shows before the next read.
   const [stopAsked, setStopAsked] = useState<string | null>(null);
   const [stopFailure, setStopFailure] = useState<string | null>(null);
+  // The human ticket closed here: its line, and the agent tickets that closing it unblocked.
+  const [closed, setClosed] = useState<{
+    number: string;
+    line: string;
+    unblocked: string[];
+  } | null>(null);
   // A live run counts its time on, and a died run counts the silence.
   const ticking = Boolean(view?.run && view.run.status !== "finished");
   const now = useNow(ticking || formOpen);
@@ -100,6 +110,7 @@ export function LoopRunView({
       () => {
         setStarting(false);
         setFormOpen(false);
+        setClosed((c) => (c ? { ...c, unblocked: [] } : c));
         launch.onStarted();
       },
       (e) => {
@@ -108,6 +119,26 @@ export function LoopRunView({
       },
     );
   };
+  const markDone = async (t: TicketRow) => {
+    if (!launch) throw new Error("no feature folder");
+    const line = await markTicketDone(launch.featureDir, t.number);
+    setClosed({
+      number: t.number,
+      line,
+      unblocked: unblockedBy(tickets, t.number),
+    });
+    launch.onTicketsChanged?.();
+    return line;
+  };
+  // Offered while no run is live, for the tickets that are still waiting for the loop. The app only
+  // offers: "Start the loop" opens the launch form, and a run starts only from that form.
+  const unblockedIds =
+    launch && closed && run?.status !== "live" && blocked === null
+      ? closed.unblocked.filter((id) => {
+          const t = tickets.find((x) => x.number === id);
+          return t && !t.running && !isDoneStatus(t.status);
+        })
+      : [];
   const stopping =
     run?.status === "live" && (run.stop_requested || stopAsked === run.id);
   const stop = () => {
@@ -203,6 +234,17 @@ export function LoopRunView({
           </code>
         )}
       </div>
+      {unblockedIds.length > 0 && !formOpen && (
+        <div
+          className="flex shrink-0 items-center gap-3 border-b border-border/60 px-3 py-1.5 text-xs"
+          data-testid="unblocked"
+        >
+          <span>{unblockedText(unblockedIds)}</span>
+          <Button size="xs" variant="outline" onClick={() => setFormOpen(true)}>
+            Start the loop
+          </Button>
+        </div>
+      )}
       {formOpen && ctx && (
         <LoopLaunchForm
           options={options}
@@ -302,6 +344,19 @@ export function LoopRunView({
               run={run}
               feature={feature}
               active={active}
+              human={
+                launch
+                  ? {
+                      live: launch.live,
+                      featureDir: launch.featureDir,
+                      closed: closed && {
+                        number: closed.number,
+                        line: closed.line,
+                      },
+                      markDone,
+                    }
+                  : undefined
+              }
             />
           )}
         </div>

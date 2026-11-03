@@ -11,7 +11,11 @@ import {
   whenDisplayReady,
 } from "@/modules/terminal";
 import { TerminalPane } from "@/modules/terminal/TerminalPane";
+import { launchClaude } from "./launchClaude";
+import { isDoneStatus, workBlockedBy } from "./lib/humanTicket";
+import type { LiveRun } from "./lib/loopLaunch";
 import type { RunView, TicketRow } from "./lib/loopRun";
+import { freshLine, ticketPathOf, workOnThisInput } from "./lib/stageCommand";
 import { allocateStageLeaf } from "./lib/stageTerminals";
 import {
   type LogEntry,
@@ -98,6 +102,23 @@ export function useTicketTerminals(
     },
     [dispatch],
   );
+  // "Work on this": a terminal of its own with an interactive claude typing `/implement <path>`.
+  // A ticket has one; asking again only brings it back and types nothing.
+  const work = useCallback(
+    (number: string, ticketPath: string) => {
+      const has = ref.current.opened[number]?.work != null;
+      const leaf = has ? -1 : allocateStageLeaf();
+      dispatch({ type: "work", number, leaf });
+      if (has) return;
+      void launchClaude(
+        repoRoot,
+        leaf,
+        freshLine(crypto.randomUUID()),
+        workOnThisInput(ticketPath),
+      );
+    },
+    [dispatch, repoRoot],
+  );
   const showRun = useCallback(
     (number: string) => dispatch({ type: "show-run", number }),
     [dispatch],
@@ -118,6 +139,7 @@ export function useTicketTerminals(
     state,
     select,
     openShell,
+    work,
     showRun,
     pickRun,
     onShellExit,
@@ -261,12 +283,15 @@ export function TicketTerminalArea({
   run,
   feature,
   active,
+  human,
 }: {
   api: TicketTerminalsApi;
   tickets: TicketRow[];
   run: RunView | null;
   feature: string;
   active: boolean;
+  /** What a human ticket's header needs; without it the header offers no "Work on this". */
+  human?: HumanTickets;
 }) {
   const { state, repoRoot } = api;
   const selected = tickets.find((t) => t.number === state.selected);
@@ -289,7 +314,10 @@ export function TicketTerminalArea({
               shown={replayedRun(run, opened.pickedRun)}
             />
           )}
-          {opened.showShell ? (
+          {selected.human && human && (
+            <HumanActions api={api} ticket={selected} human={human} />
+          )}
+          {opened.showShell || opened.showWork ? (
             <Button
               size="xs"
               variant="outline"
@@ -323,10 +351,11 @@ export function TicketTerminalArea({
           />
           {Object.entries(state.opened).flatMap(([number, t]) => {
             const ticket = tickets.find((x) => x.number === number);
-            const leaves: [number, "replay" | "shell"][] = [
+            const leaves: [number, "replay" | "shell" | "work"][] = [
               [t.replay, "replay"],
             ];
             if (t.shell !== null) leaves.push([t.shell, "shell"]);
+            if (t.work !== null) leaves.push([t.work, "work"]);
             return leaves.map(([leaf, kind]) => (
               <div
                 key={leaf}
@@ -345,9 +374,9 @@ export function TicketTerminalArea({
                 <TerminalPane
                   leafId={leaf}
                   visible={active && leaf === shown}
-                  focused={active && leaf === shown && kind === "shell"}
+                  focused={active && leaf === shown && kind !== "replay"}
                   initialCwd={repoRoot}
-                  onExit={kind === "shell" ? api.onShellExit : undefined}
+                  onExit={kind === "replay" ? undefined : api.onShellExit}
                 />
               </div>
             ));
@@ -363,6 +392,98 @@ export function TicketTerminalArea({
         />
       )}
     </div>
+  );
+}
+
+/** What the Loop hands a human ticket's header. */
+export type HumanTickets = {
+  /** Live runs of the repo, whatever feature they work on. */
+  live: LiveRun[];
+  /** The feature folder, for the ticket's path. */
+  featureDir: string;
+  /** The ticket closed here and the line written, so its header shows it. */
+  closed: { number: string; line: string } | null;
+  /** Writes `**Status:** done`; resolves with that line. */
+  markDone: (ticket: TicketRow) => Promise<string>;
+};
+
+/** "Work on this" and "Mark done", in a human ticket's terminal header. */
+function HumanActions({
+  api,
+  ticket,
+  human,
+}: {
+  api: TicketTerminalsApi;
+  ticket: TicketRow;
+  human: HumanTickets;
+}) {
+  // The reason a pressed, dimmed "Work on this" gave, and a failed "Mark done".
+  const [said, setSaid] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const blocked = workBlockedBy(human.live);
+  const number = ticket.number;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new ticket starts without the last one's messages
+  useEffect(() => {
+    setSaid(null);
+    setFailure(null);
+  }, [number]);
+  const line = human.closed?.number === number ? human.closed.line : null;
+  const done = line !== null || isDoneStatus(ticket.status);
+  return (
+    <>
+      {said && blocked && (
+        <span
+          className="max-w-72 truncate text-muted-foreground"
+          role="status"
+          title={blocked}
+        >
+          {blocked}
+        </span>
+      )}
+      {failure && (
+        <span
+          className="max-w-72 truncate text-destructive"
+          role="alert"
+          title={failure}
+        >
+          {failure}
+        </span>
+      )}
+      {line && <code className="font-mono text-[11px]">{line}</code>}
+      <Button
+        size="xs"
+        variant="outline"
+        // Not `disabled`: a dimmed button still answers a press, with the reason.
+        aria-disabled={blocked !== null}
+        className={blocked !== null ? "opacity-50" : undefined}
+        title={
+          blocked ?? "Open claude here and type /implement for this ticket"
+        }
+        onClick={() => {
+          if (blocked !== null) return setSaid(blocked);
+          setSaid(null);
+          api.work(
+            number,
+            ticketPathOf(api.repoRoot, human.featureDir, ticket.name),
+          );
+        }}
+      >
+        Work on this
+      </Button>
+      {!done && (
+        <Button
+          size="xs"
+          variant="outline"
+          title="Write **Status:** done in the ticket file"
+          onClick={() => {
+            setFailure(null);
+            human.markDone(ticket).catch((e) => setFailure(String(e)));
+          }}
+        >
+          Mark done
+        </Button>
+      )}
+    </>
   );
 }
 

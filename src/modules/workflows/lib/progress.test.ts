@@ -342,6 +342,55 @@ describe("the tickets gate", () => {
   });
 });
 
+describe("the Loop gate", () => {
+  const loop = (ticketStatuses: Record<string, string>, names?: string[]) =>
+    computeProgress(
+      input({
+        featureFiles: files,
+        repoFiles,
+        buildTickets: names ?? Object.keys(ticketStatuses),
+        ticketStatuses,
+      }),
+    ).stages[5];
+
+  it("passes when every build ticket is completed, resolved or done", () => {
+    const l = loop({
+      "01-a.md": "completed",
+      "02-b.md": "resolved",
+      "03-c.md": "done",
+    });
+    expect(l.gatePasses).toBe(true);
+    expect(l.gate).toBe("loop");
+    expect(l.state).toBe("done");
+  });
+
+  it("holds while a human ticket is still open, though every agent ticket is done", () => {
+    const l = loop({
+      "01-a.md": "completed",
+      "02-hitl-b.md": "ready-for-human",
+    });
+    expect(l.gatePasses).toBe(false);
+    expect(l.state).toBe("current");
+  });
+
+  it("passes once Mark done has written done on that human ticket", () => {
+    expect(
+      loop({ "01-a.md": "completed", "02-hitl-b.md": "done" }).gatePasses,
+    ).toBe(true);
+  });
+
+  it("holds for a failed, in-progress or missing status key", () => {
+    expect(loop({ "01-a.md": "failed" }).gatePasses).toBe(false);
+    expect(loop({ "01-a.md": "in-progress" }).gatePasses).toBe(false);
+    expect(loop({}, ["01-a.md"]).gatePasses).toBe(false);
+    expect(loop({ "01-a.md": "" }).gatePasses).toBe(false);
+  });
+
+  it("does not pass with no build ticket at all", () => {
+    expect(loop({}, []).gatePasses).toBe(false);
+  });
+});
+
 describe("the check gate", () => {
   const lint: Workflow = {
     id: "w",

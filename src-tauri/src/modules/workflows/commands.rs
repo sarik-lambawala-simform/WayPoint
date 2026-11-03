@@ -11,7 +11,7 @@ use crate::modules::ralph::runs::{
     RunView,
 };
 use crate::modules::ralph::ticket_read::{read_ticket, ticket_window, TicketRead, TicketWindow};
-use crate::modules::ralph::tickets::read_tickets;
+use crate::modules::ralph::tickets::{mark_done, read_tickets};
 use crate::modules::ralph::watch::{unwatch, watch_loop};
 
 const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
@@ -118,7 +118,7 @@ pub async fn workflows_run_check(
 /// a wayfinder ticket (a plain `Type:` line or a `## Question` heading) is not one; a human
 /// ticket is. A missing folder holds none.
 #[tauri::command]
-pub async fn workflows_build_tickets(feature_dir: String) -> Vec<String> {
+pub async fn workflows_build_tickets(feature_dir: String) -> Vec<BuildTicket> {
     tokio::task::spawn_blocking(move || {
         let dir = PathBuf::from(feature_dir);
         if !dir.is_absolute() {
@@ -348,23 +348,49 @@ pub fn workflows_loop_unwatch(id: u32) {
     unwatch(id);
 }
 
-pub fn build_tickets(issues_dir: &std::path::Path) -> Vec<String> {
+/// A build ticket as the gates see it: its file name and its bold status key (what the loop reads).
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct BuildTicket {
+    pub name: String,
+    pub status_key: String,
+}
+
+pub fn build_tickets(issues_dir: &std::path::Path) -> Vec<BuildTicket> {
     read_tickets(issues_dir)
         .unwrap_or_default()
         .into_iter()
         .filter(|t| !t.wayfinder)
-        .map(|t| {
-            t.path
+        .map(|t| BuildTicket {
+            name: t
+                .path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default()
+                .unwrap_or_default(),
+            status_key: t.status_key,
         })
         .collect()
 }
 
+/// "Mark done" on a human ticket: writes `**Status:** done` into it and returns that line.
+#[tauri::command]
+pub async fn workflows_ticket_mark_done(
+    feature_dir: String,
+    number: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let dir = PathBuf::from(feature_dir);
+        if !dir.is_absolute() {
+            return Err(format!("{}: not an absolute path", dir.display()));
+        }
+        mark_done(&dir.join("issues"), &number)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
-    use super::build_tickets;
+    use super::{build_tickets, BuildTicket};
 
     #[test]
     fn build_and_human_tickets_count_and_wayfinder_tickets_do_not() {
@@ -382,9 +408,16 @@ mod tests {
         w("03-way.md", "# 03 — Way\n\nType: question\n");
         w("04-way2.md", "# 04 — Way\n\n## Question\n");
         w("05-note.txt", "x");
+        let t = |name: &str, key: &str| BuildTicket {
+            name: name.into(),
+            status_key: key.into(),
+        };
         assert_eq!(
             build_tickets(dir.path()),
-            ["01-build.md", "02-hitl-check.md"]
+            [
+                t("01-build.md", "ready-for-agent"),
+                t("02-hitl-check.md", "ready-for-human")
+            ]
         );
         assert!(build_tickets(&dir.path().join("none")).is_empty());
     }

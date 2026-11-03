@@ -282,6 +282,69 @@ pub fn read_tickets(issues_dir: &Path) -> io::Result<Vec<Ticket>> {
         .collect())
 }
 
+/// `\r` when the line ends with one, so a rewritten line keeps its file's line ending.
+fn eol(line: &str) -> &'static str {
+    if line.ends_with('\r') {
+        "\r"
+    } else {
+        ""
+    }
+}
+
+/// `text` with its `**Status:**` line set to `**Status:** done`. The first such line is the one
+/// the reader uses, so it is the one replaced; a ticket with none gets the line under its title.
+/// Line endings stay as the file has them.
+pub fn with_status_done(text: &str) -> String {
+    const LINE: &str = "**Status:** done";
+    let mut lines: Vec<&str> = text.split('\n').collect();
+    if let Some(i) = lines.iter().position(|l| l.starts_with("**Status:**")) {
+        let replaced = format!("{LINE}{}", eol(lines[i]));
+        let mut out: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        out[i] = replaced;
+        return out.join("\n");
+    }
+    let cr = lines.first().map_or("", |l| eol(l));
+    if text.is_empty() {
+        return format!("{LINE}\n");
+    }
+    let rest = lines.split_off(1);
+    let mut out = format!("{}\n{cr}\n{LINE}{cr}\n", lines[0]);
+    out.push_str(&rest.join("\n"));
+    out
+}
+
+/// "Mark done": writes `**Status:** done` into human ticket `number` of `issues_dir` and returns
+/// that line. Only a ticket the agent may not take is closed this way; a symlink is never written
+/// through. The file is replaced whole, so a reader never sees half of it.
+pub fn mark_done(issues_dir: &Path, number: &str) -> Result<String, String> {
+    if !super::ticket_read::ticket_number(number) {
+        return Err(format!("not a ticket number: {number}"));
+    }
+    let texts = read_texts(issues_dir).map_err(|e| e.to_string())?;
+    let prefix = format!("{number}-");
+    let (name, text) = texts
+        .iter()
+        .find(|(n, _)| n.starts_with(&prefix))
+        .ok_or_else(|| format!("no ticket {number} in {}", issues_dir.display()))?;
+    if !is_human(name, text) {
+        return Err(format!("ticket {number} is not a human ticket"));
+    }
+    let path = issues_dir.join(name);
+    let meta = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err(format!("{} is not a plain file", path.display()));
+    }
+    let tmp = issues_dir.join(format!(".{number}.status.tmp"));
+    std::fs::write(&tmp, with_status_done(text)).map_err(|e| e.to_string())?;
+    let swap = std::fs::set_permissions(&tmp, meta.permissions())
+        .and_then(|()| std::fs::rename(&tmp, &path));
+    if let Err(e) = swap {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    Ok("**Status:** done".to_string())
+}
+
 /// The ticket dir of a feature as this machine reaches it. A WSL workspace's path is a Linux path
 /// inside the distro; on Windows it becomes a `\\wsl.localhost\<distro>\...` path (or the drvfs
 /// path for `/mnt/c/...`), elsewhere it is unchanged.
@@ -295,6 +358,82 @@ mod tests {
 
     fn blockers(s: &str) -> String {
         blockers_of(s).join(" ")
+    }
+
+    #[test]
+    fn done_status_replaces_the_first_status_line_and_keeps_line_endings() {
+        assert_eq!(
+            with_status_done("# 01 — A\n\n**Status:** ready-for-human\n- [ ] x\n"),
+            "# 01 — A\n\n**Status:** done\n- [ ] x\n"
+        );
+        assert_eq!(
+            with_status_done("# 01\r\n**Status:** in-progress\r\n**Status:** later\r\n"),
+            "# 01\r\n**Status:** done\r\n**Status:** later\r\n"
+        );
+        assert_eq!(
+            status_key_of(&with_status_done("# t\n**Status:** x, y\n")),
+            "done"
+        );
+    }
+
+    #[test]
+    fn done_status_goes_under_the_title_when_there_is_none() {
+        assert_eq!(
+            with_status_done("# 01 — A\n\nbody\n"),
+            "# 01 — A\n\n**Status:** done\n\nbody\n"
+        );
+        assert_eq!(
+            with_status_done("# 01\r\nbody"),
+            "# 01\r\n\r\n**Status:** done\r\nbody"
+        );
+        assert_eq!(with_status_done(""), "**Status:** done\n");
+        assert_eq!(status_key_of(&with_status_done("# 01\nbody\n")), "done");
+    }
+
+    #[test]
+    fn mark_done_closes_only_a_human_ticket() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = |n: &str, t: &str| std::fs::write(dir.path().join(n), t).unwrap();
+        w("01-build.md", "# 01 — B\n\n**Status:** ready-for-agent\n");
+        w("02-hitl-x.md", "# 02 — H\n\n**Status:** in-progress\n");
+        w("03-y.md", "# 03 — H\n\n**Status:** ready-for-human\n");
+        assert!(mark_done(dir.path(), "01")
+            .unwrap_err()
+            .contains("not a human"));
+        assert!(mark_done(dir.path(), "09")
+            .unwrap_err()
+            .contains("no ticket"));
+        assert!(mark_done(dir.path(), "../").is_err());
+        assert_eq!(mark_done(dir.path(), "02").unwrap(), "**Status:** done");
+        assert_eq!(mark_done(dir.path(), "03").unwrap(), "**Status:** done");
+        let read = |n: &str| std::fs::read_to_string(dir.path().join(n)).unwrap();
+        assert_eq!(read("02-hitl-x.md"), "# 02 — H\n\n**Status:** done\n");
+        assert_eq!(read("03-y.md"), "# 03 — H\n\n**Status:** done\n");
+        assert_eq!(
+            read("01-build.md"),
+            "# 01 — B\n\n**Status:** ready-for-agent\n"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            3,
+            "no temp file is left behind"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mark_done_never_writes_through_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("elsewhere.txt");
+        std::fs::write(&outside, "# x\n**Status:** ready-for-human\n").unwrap();
+        let issues = dir.path().join("issues");
+        std::fs::create_dir(&issues).unwrap();
+        std::os::unix::fs::symlink(&outside, issues.join("01-hitl-a.md")).unwrap();
+        assert!(mark_done(&issues, "01").is_err());
+        assert_eq!(
+            std::fs::read_to_string(&outside).unwrap(),
+            "# x\n**Status:** ready-for-human\n"
+        );
     }
 
     #[test]

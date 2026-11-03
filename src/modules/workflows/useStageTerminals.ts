@@ -1,16 +1,13 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { native } from "@/modules/ai/lib/native";
 import {
   disposeSession,
   leafIdForPty,
   ptyIdForLeaf,
   subscribeAgentSignals,
   useAgentActivityStore,
-  whenSessionReady,
-  writeToSession,
 } from "@/modules/terminal";
+import { launchClaude } from "./launchClaude";
 import {
   forkLine,
   freshLine,
@@ -29,13 +26,6 @@ import {
   type TerminalEntries,
 } from "./lib/stageTerminals";
 
-/** claude has been started; its TUI needs this long before typed text lands in its prompt. */
-const CLAUDE_READY_MS = 3000;
-const SUBMIT_GAP_MS = 150;
-const START_TIMEOUT_MS = 15_000;
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
 /** Terminal leaves per feature folder, so closing a feature tab can dispose them. */
 const leavesByFeature = new Map<string, Set<number>>();
 
@@ -51,27 +41,6 @@ export function disposeClosedFeatures(openDirs: Set<string>) {
     for (const leaf of leavesByFeature.get(dir) ?? []) disposeSession(leaf);
     leavesByFeature.delete(dir);
   }
-}
-
-/** Resolves true on the first `started` signal of `pty`, false after the timeout. */
-function whenClaudeStarted(pty: number): {
-  done: Promise<boolean>;
-  stop: () => void;
-} {
-  let stop = () => {};
-  const done = new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => resolve(false), START_TIMEOUT_MS);
-    const off = subscribeAgentSignals((s) => {
-      if (s.id === pty && (s.kind === "started" || s.kind === "working")) {
-        resolve(true);
-      }
-    });
-    stop = () => {
-      clearTimeout(timer);
-      off();
-    };
-  }).finally(() => stop());
-  return { done, stop };
 }
 
 export type StartRequest = {
@@ -146,35 +115,9 @@ export function useStageTerminals(
     }
   }, []);
 
-  /** Types `line` once the terminal's shell is ready, then `input` once claude is up. */
   const launch = useCallback(
-    async (leaf: number, line: string, input: string | null, note?: string) => {
-      await native.workspaceAuthorize(repoRoot).catch(() => {});
-      await invoke("agent_enable_hooks", { agent: "claude" }).catch((e) =>
-        console.warn("[waypoint] could not enable claude notifications:", e),
-      );
-      await whenSessionReady(leaf);
-      const pty = ptyIdForLeaf(leaf);
-      const started =
-        input !== null && pty !== null ? whenClaudeStarted(pty) : null;
-      if (
-        (note && !writeToSession(leaf, `${note}\r`)) ||
-        !writeToSession(leaf, `${line}\r`)
-      ) {
-        started?.stop();
-        console.error(`[waypoint] stage terminal ${leaf} closed before launch`);
-        return;
-      }
-      if (!started || input === null) return;
-      if (!(await started.done)) {
-        console.error(`[waypoint] claude did not start in terminal ${leaf}`);
-        return;
-      }
-      await sleep(CLAUDE_READY_MS);
-      if (!writeToSession(leaf, input)) return;
-      await sleep(SUBMIT_GAP_MS);
-      writeToSession(leaf, "\r");
-    },
+    (leaf: number, line: string, input: string | null, note?: string) =>
+      launchClaude(repoRoot, leaf, line, input, note),
     [repoRoot],
   );
 

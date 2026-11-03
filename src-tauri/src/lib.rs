@@ -350,6 +350,7 @@ pub fn run() {
             workflows::commands::workflows_list_files, // fork
             workflows::commands::workflows_run_check, // fork
             workflows::commands::workflows_build_tickets, // fork
+            workflows::commands::workflows_ticket_mark_done, // fork
             workflows::commands::workflows_map_facts, // fork
             workflows::commands::workflows_session_turns, // fork
             workflows::commands::workflows_sessions_present, // fork

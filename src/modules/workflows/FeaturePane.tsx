@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckOutput } from "./CheckOutput";
 import {
   type Catalog,
@@ -180,6 +180,22 @@ function LoadedPane({
     onActivate();
     if (loopIndex >= 0) setSelected(loopIndex);
   });
+  const reloadProgress = useCallback(
+    () =>
+      void refresh().catch((e) =>
+        console.error("could not read the progress", e),
+      ),
+    [refresh],
+  );
+  // The Loop's gate reads the tickets' status keys, so the progress is read again whenever the
+  // run or a ticket's status changes (the script commits a ticket's status as it ends it).
+  const loopSignature = loopRun
+    ? `${loopRun.run?.status ?? ""}|${loopRun.tickets.map((t) => `${t.name}:${t.status}`).join(",")}`
+    : null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loopSignature stands for the run and ticket state it is built from
+  useEffect(() => {
+    if (loopSignature !== null) reloadProgress();
+  }, [loopSignature, reloadProgress]);
   const ticketTerminals = useTicketTerminals(repoRoot, onOpenCommitFile);
   const [loopSeen, setLoopSeen] = useState(false);
   const forkStages: ForkStage[] = (resolvedEntry?.workflow.stages ?? []).map(
@@ -555,6 +571,7 @@ function LoadedPane({
                 featureDir,
                 live: liveRuns.live,
                 onStarted: liveRuns.refresh,
+                onTicketsChanged: reloadProgress,
               }}
             />
           </div>

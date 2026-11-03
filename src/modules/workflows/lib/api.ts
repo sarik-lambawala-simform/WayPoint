@@ -171,10 +171,20 @@ export const recordProgress = (dir: string, update: ProgressUpdate) =>
 export const listFiles = (root: string, dirs: string[]) =>
   invoke<string[]>("workflows_list_files", { root: hostOf(root), dirs });
 
-/** Names of the build tickets in `<featureDir>/issues`: human tickets count, wayfinder ones don't. */
+/** A build ticket's file name and its bold status key. */
+export type BuildTicket = { name: string; status_key: string };
+
+/** The build tickets in `<featureDir>/issues`: human tickets count, wayfinder ones don't. */
 export const buildTickets = (featureDir: string) =>
-  invoke<string[]>("workflows_build_tickets", {
+  invoke<BuildTicket[]>("workflows_build_tickets", {
     featureDir: hostOf(featureDir),
+  });
+
+/** "Mark done": writes `**Status:** done` into human ticket `number`; resolves with that line. */
+export const markTicketDone = (featureDir: string, number: string) =>
+  invoke<string>("workflows_ticket_mark_done", {
+    featureDir: hostOf(featureDir),
+    number,
   });
 
 /** Turns typed into a claude session after `since` (ISO time); null when its transcript is not on this machine. */

@@ -10,6 +10,10 @@ export type OpenedTicket = {
   shell: number | null;
   /** The shell fills the area instead of the replay. */
   showShell: boolean;
+  /** A human ticket's "Work on this" terminal: a shell that runs an interactive claude. */
+  work: number | null;
+  /** The work terminal fills the area. */
+  showWork: boolean;
   /** An older run picked in the "Run:" picker; null replays the newest run. */
   pickedRun: RunView | null;
 };
@@ -28,6 +32,7 @@ export const NO_TICKET_TERMINALS: TicketTerminals = {
 export type TicketTerminalAction =
   | { type: "select"; number: string; replayLeaf: number }
   | { type: "open-shell"; number: string; leaf: number }
+  | { type: "work"; number: string; leaf: number }
   | { type: "show-run"; number: string }
   | { type: "pick-run"; number: string; run: RunView | null }
   | { type: "shell-exited"; leaf: number };
@@ -48,6 +53,8 @@ export function reduceTicketTerminals(
                 replay: action.replayLeaf,
                 shell: null,
                 showShell: false,
+                work: null,
+                showWork: false,
                 pickedRun: null,
               },
             },
@@ -64,18 +71,36 @@ export function reduceTicketTerminals(
             ...t,
             shell: t.shell ?? action.leaf,
             showShell: true,
+            showWork: false,
+          },
+        },
+      };
+    }
+    case "work": {
+      const t = state.opened[action.number];
+      if (!t) return state;
+      // A ticket has one work terminal: asking again brings it back, and types nothing.
+      return {
+        ...state,
+        opened: {
+          ...state.opened,
+          [action.number]: {
+            ...t,
+            work: t.work ?? action.leaf,
+            showWork: true,
+            showShell: false,
           },
         },
       };
     }
     case "show-run": {
       const t = state.opened[action.number];
-      if (!t?.showShell) return state;
+      if (!t?.showShell && !t?.showWork) return state;
       return {
         ...state,
         opened: {
           ...state.opened,
-          [action.number]: { ...t, showShell: false },
+          [action.number]: { ...t, showShell: false, showWork: false },
         },
       };
     }
@@ -86,20 +111,29 @@ export function reduceTicketTerminals(
         ...state,
         opened: {
           ...state.opened,
-          [action.number]: { ...t, pickedRun: action.run, showShell: false },
+          [action.number]: {
+            ...t,
+            pickedRun: action.run,
+            showShell: false,
+            showWork: false,
+          },
         },
       };
     }
     case "shell-exited": {
       const entry = Object.entries(state.opened).find(
-        ([, t]) => t.shell === action.leaf,
+        ([, t]) => t.shell === action.leaf || t.work === action.leaf,
       );
       if (!entry) return state;
+      const [number, t] = entry;
       return {
         ...state,
         opened: {
           ...state.opened,
-          [entry[0]]: { ...entry[1], shell: null, showShell: false },
+          [number]:
+            t.work === action.leaf
+              ? { ...t, work: null, showWork: false }
+              : { ...t, shell: null, showShell: false },
         },
       };
     }
@@ -109,7 +143,7 @@ export function reduceTicketTerminals(
 /** Every leaf the state holds, for disposal. */
 export function allLeaves(state: TicketTerminals): number[] {
   return Object.values(state.opened).flatMap((t) =>
-    t.shell === null ? [t.replay] : [t.replay, t.shell],
+    [t.replay, t.shell, t.work].filter((l): l is number => l !== null),
   );
 }
 
@@ -117,5 +151,6 @@ export function allLeaves(state: TicketTerminals): number[] {
 export function shownLeaf(state: TicketTerminals): number | null {
   const t = state.selected ? state.opened[state.selected] : undefined;
   if (!t) return null;
+  if (t.showWork && t.work !== null) return t.work;
   return t.showShell && t.shell !== null ? t.shell : t.replay;
 }

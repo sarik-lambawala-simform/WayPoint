@@ -99,3 +99,21 @@ export function missingSessionInput(
     ? `/to-tickets ${vars.feature}/spec.md`
     : null;
 }
+
+/**
+ * What "Work on this" types into an interactive `claude` (started with `freshLine`): the
+ * `/implement` skill and the ticket's path, relative to the repo root. A path that is not a single
+ * plain line is refused, so nothing but the path can reach the prompt.
+ */
+export function workOnThisInput(ticketPath: string): string {
+  if (!ticketPath || /[\r\n\0]/.test(ticketPath))
+    throw new Error("not a ticket path");
+  return `/implement ${ticketPath}`;
+}
+
+/** A ticket's path from the repo root: `<feature folder>/issues/<file name>`. */
+export const ticketPathOf = (
+  repoRoot: string,
+  featureDir: string,
+  ticketName: string,
+) => `${featureRel(repoRoot, featureDir)}/issues/${ticketName}`;

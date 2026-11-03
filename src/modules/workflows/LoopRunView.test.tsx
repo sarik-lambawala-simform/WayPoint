@@ -261,6 +261,7 @@ describe("the Loop cell's chip", () => {
       state: { selected, opened: {} },
       select: () => {},
       openShell: () => {},
+      work: () => {},
       showRun: () => {},
       pickRun: () => {},
       onShellExit: () => {},

@@ -83,7 +83,10 @@ export function useFeatureProgress(
         route,
         featureFiles,
         repoFiles,
-        buildTickets: tickets,
+        buildTickets: tickets.map((t) => t.name),
+        ticketStatuses: Object.fromEntries(
+          tickets.map((t) => [t.name, t.status_key]),
+        ),
         mapFacts: facts,
         repoProgress: repo.file,
         featureProgress: feature.file,

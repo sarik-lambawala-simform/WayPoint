@@ -10,7 +10,9 @@ import {
   resumeLine,
   stageInput,
   substituteVars,
+  ticketPathOf,
   unattendedLine,
+  workOnThisInput,
 } from "./stageCommand";
 
 const ID = "6f1c2a52-8c0e-4a1f-9d57-3b1d3a0f6a11";
@@ -138,5 +140,26 @@ describe("when there is no session to continue", () => {
   it("joins notes into one shell line", () => {
     expect(joinNotes([undefined, "echo a", "echo b"])).toBe("echo a; echo b");
     expect(joinNotes([undefined])).toBeUndefined();
+  });
+});
+
+describe("Work on this", () => {
+  it("opens a fresh interactive claude and types /implement with the ticket path", () => {
+    expect(freshLine(ID)).toBe(`claude --session-id ${ID}`);
+    expect(workOnThisInput(".scratch/f/issues/18-human.md")).toBe(
+      "/implement .scratch/f/issues/18-human.md",
+    );
+  });
+
+  it("refuses a path that is empty or spans lines", () => {
+    expect(() => workOnThisInput("")).toThrow();
+    expect(() => workOnThisInput("a.md\n/exit")).toThrow();
+    expect(() => workOnThisInput("a.md\r")).toThrow();
+  });
+
+  it("names the ticket by its path from the repo root", () => {
+    expect(ticketPathOf("/r", "/r/.scratch/f", "18-human.md")).toBe(
+      ".scratch/f/issues/18-human.md",
+    );
   });
 });

@@ -50,6 +50,8 @@ describe("ticket terminals", () => {
       replay: 10,
       shell: 20,
       showShell: true,
+      work: null,
+      showWork: false,
       pickedRun: null,
     });
     s = reduce(s, { type: "shell-exited", leaf: 20 });
@@ -75,5 +77,31 @@ describe("ticket terminals", () => {
     s = reduce(s, { type: "pick-run", number: "01", run: null });
     expect(s.opened["01"].pickedRun).toBeNull();
     expect(reduce(s, { type: "pick-run", number: "09", run: old })).toBe(s);
+  });
+
+  it("opens a ticket's work terminal once, brings it back without a second one, and drops it when its shell exits", () => {
+    let s = reduce(NO_TICKET_TERMINALS, {
+      type: "select",
+      number: "02",
+      replayLeaf: 10,
+    });
+    s = reduce(s, { type: "work", number: "02", leaf: 30 });
+    expect(shownLeaf(s)).toBe(30);
+    s = reduce(s, { type: "show-run", number: "02" });
+    expect(shownLeaf(s)).toBe(10);
+    s = reduce(s, { type: "work", number: "02", leaf: 31 });
+    expect(s.opened["02"].work).toBe(30);
+    expect(shownLeaf(s)).toBe(30);
+    expect(allLeaves(s)).toEqual([10, 30]);
+    s = reduce(s, { type: "open-shell", number: "02", leaf: 20 });
+    expect(shownLeaf(s)).toBe(20);
+    expect(allLeaves(s)).toEqual([10, 20, 30]);
+    s = reduce(s, { type: "work", number: "02", leaf: 32 });
+    expect(shownLeaf(s)).toBe(30);
+    s = reduce(s, { type: "shell-exited", leaf: 30 });
+    expect(s.opened["02"].work).toBeNull();
+    expect(s.opened["02"].shell).toBe(20);
+    expect(shownLeaf(s)).toBe(10);
+    expect(reduce(s, { type: "work", number: "09", leaf: 40 })).toBe(s);
   });
 });

@@ -2,6 +2,7 @@
 // and of the repo, and the two progress.yaml files to each stage's state and the current stage.
 
 import type { Stage, Workflow } from "./api";
+import { isDoneStatus } from "./humanTicket";
 
 export type Marks = {
   confirmed?: string | null;
@@ -29,6 +30,7 @@ export type GateKind =
   | "confirm"
   | "tickets"
   | "map"
+  | "loop"
   | "check"
   | "none";
 
@@ -82,6 +84,8 @@ export type ProgressInput = {
   featureProgress: ProgressFile | null;
   /** Names of the build tickets in `issues/`, by the Rust reader's rule (`workflows_build_tickets`). */
   buildTickets?: string[];
+  /** Each build ticket's bold status key by name, for the Loop's gate. */
+  ticketStatuses?: Record<string, string>;
   /** For the `map` gate; without it that gate does not pass. */
   mapFacts?: MapFacts;
 };
@@ -134,6 +138,18 @@ export function mapCleared(facts: MapFacts | undefined): boolean {
   );
 }
 
+/**
+ * The Loop's gate: every build ticket's status key is `completed`, `resolved` or `done`, human
+ * tickets included. A feature with no build ticket has nothing built.
+ */
+function loopBuilt(
+  tickets: string[] | undefined,
+  statuses: Record<string, string> | undefined,
+): boolean {
+  if (!tickets || tickets.length === 0) return false;
+  return tickets.every((name) => isDoneStatus(statuses?.[name] ?? ""));
+}
+
 /** A stage with the chosen route's overrides applied. */
 export function effectiveStage(stage: Stage, route: string | null): Stage {
   const over = route ? stage.routes?.[route] : undefined;
@@ -181,6 +197,7 @@ function gateKind(stage: Stage): GateKind {
   const w = stage.done_when;
   if (w === "confirm" || w === "tickets" || w === "map") return w;
   if (w && typeof w === "object") return "check";
+  if (stage.run === "loop") return "loop";
   return stage.produces && stage.produces.length > 0 ? "produces" : "none";
 }
 
@@ -204,6 +221,8 @@ function evaluate(stage: Stage & { key: string }, input: ProgressInput) {
   else if (kind === "tickets")
     gatePasses = (input.buildTickets ?? []).length > 0;
   else if (kind === "map") gatePasses = mapCleared(input.mapFacts);
+  else if (kind === "loop")
+    gatePasses = loopBuilt(input.buildTickets, input.ticketStatuses);
   else if (kind === "produces") gatePasses = everyMatches;
 
   const skipped = stage.optional && Boolean(marks.skipped) && !gatePasses;
