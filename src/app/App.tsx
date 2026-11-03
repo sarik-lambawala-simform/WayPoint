@@ -1567,6 +1567,7 @@ export default function App() {
                         onFeatureTitle={(id, title) => updateTab(id, { title })} // fork
                         onOpenFeaturePath={(path) => handleOpenFile(path, true)} // fork
                         onSwitchEnv={handleWorkspaceChange} // fork
+                        onActivateTab={setActiveId} // fork
                         onOpenMarkdown={newMarkdownTab} // fork
                       />
                     </div>

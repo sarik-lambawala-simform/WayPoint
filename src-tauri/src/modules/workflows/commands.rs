@@ -7,7 +7,8 @@ use super::progress::{self, ProgressFile, ProgressRead, Update};
 use super::workflow::{shipped_workflow, Vars, Workflow};
 use crate::modules::ralph::launch;
 use crate::modules::ralph::runs::{
-    live_runs, read_loop_view, runs_for_ticket, script_alive, Env, LiveRun, LoopView, RunView,
+    live_runs, read_loop_view, request_stop, runs_for_ticket, script_alive, Env, LiveRun, LoopView,
+    RunView,
 };
 use crate::modules::ralph::ticket_read::{read_ticket, ticket_window, TicketRead, TicketWindow};
 use crate::modules::ralph::tickets::read_tickets;
@@ -237,6 +238,25 @@ pub async fn workflows_loop_start(
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         launch::start(&PathBuf::from(repo_root), &args, &launch_line)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Asks the live run `run_id` to stop by writing its stop file (never a signal); returns the
+/// file's path.
+#[tauri::command]
+pub async fn workflows_loop_stop(repo_root: String, run_id: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let repo = PathBuf::from(repo_root);
+        if !repo.is_absolute() {
+            return Err("the repo path must be absolute".to_string());
+        }
+        let env = Env {
+            now: std::time::SystemTime::now(),
+            pid_alive: &script_alive,
+        };
+        request_stop(&repo, &run_id, &env).map(|p| p.to_string_lossy().into_owned())
     })
     .await
     .map_err(|e| e.to_string())?

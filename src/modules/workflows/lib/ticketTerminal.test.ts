@@ -31,7 +31,12 @@ const ticket = (over: Partial<TicketRow> = {}): TicketRow => ({
   ...over,
 });
 const run = (status: RunView["status"]): RunView =>
-  ({ status, launch_line: null }) as RunView;
+  ({
+    status,
+    launch_line: null,
+    stop_file: "",
+    stop_requested: false,
+  }) as RunView;
 const read = (over: Partial<TicketRead> = {}): TicketRead => ({
   has_stream: true,
   prompt: "/implement\n\nDo `it`",

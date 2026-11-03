@@ -13,6 +13,8 @@ type Props = {
   onOpenCommitFile: ComponentProps<typeof FeaturePane>["onOpenCommitFile"];
   /** Switches the active space's environment; only on an offer the user accepts. */
   onSwitchEnv: (env: WorkspaceEnv) => void;
+  /** Makes a tab the active one. */
+  onActivate: (id: number) => void;
 };
 
 /** Every feature tab stays mounted; the active one is shown. */
@@ -23,6 +25,7 @@ export function FeatureStack({
   onOpenPath,
   onOpenCommitFile,
   onSwitchEnv,
+  onActivate,
 }: Props) {
   const features = useMemo(
     () => tabs.filter((t): t is FeatureTab => t.kind === "feature"),
@@ -48,6 +51,7 @@ export function FeatureStack({
             onOpenPath={onOpenPath}
             onOpenCommitFile={onOpenCommitFile}
             onSwitchEnv={onSwitchEnv}
+            onActivate={() => onActivate(t.id)}
           />
         </div>
       ))}

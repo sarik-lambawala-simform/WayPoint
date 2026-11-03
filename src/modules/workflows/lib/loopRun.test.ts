@@ -4,7 +4,6 @@ import {
   diedNote,
   formatDuration,
   formatUsd,
-  runChipLabel,
   runCostText,
   runElapsedSeconds,
   type RunView,
@@ -31,6 +30,8 @@ const run = (over: Partial<RunView> = {}): RunView => ({
   tickets_ended: 0,
   cost: { usd: 0, partial: null },
   launch_line: null,
+  stop_file: "/repo/logs/r/stop",
+  stop_requested: false,
   ...over,
 });
 
@@ -85,11 +86,6 @@ describe("the run header", () => {
       text: "$2.68+",
       title: "a stream was cut",
     });
-  });
-
-  it("puts the run status on the Loop cell's chip, and none when there is no run", () => {
-    expect(runChipLabel(run({ status: "died" }))).toBe("died");
-    expect(runChipLabel(null)).toBeNull();
   });
 });
 

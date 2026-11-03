@@ -44,6 +44,7 @@ import { StageTerminalHost } from "./StageTerminalHost";
 import { useBehindTurns } from "./useBehind";
 import { useFeatureProgress } from "./useFeatureProgress";
 import { useLiveRuns, useLoopRun } from "./useLoopRun";
+import { useRunEndNotice } from "./useRunEndNotice";
 import { useSessionsPresent } from "./useSessionsPresent";
 import {
   useLiveStages,
@@ -74,6 +75,8 @@ type Props = {
   onOpenCommitFile: OpenCommitFile;
   /** Switches the space's environment; called only when the user accepts the offer. */
   onSwitchEnv: (env: WorkspaceEnv) => void;
+  /** Makes this feature's tab the active tab; a clicked run-end notice calls it. */
+  onActivate: () => void;
 };
 
 export function FeaturePane({
@@ -85,6 +88,7 @@ export function FeaturePane({
   onOpenPath,
   onOpenCommitFile,
   onSwitchEnv,
+  onActivate,
 }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +123,7 @@ export function FeaturePane({
       onOpenPath={onOpenPath}
       onOpenCommitFile={onOpenCommitFile}
       onSwitchEnv={onSwitchEnv}
+      onActivate={onActivate}
     />
   );
 }
@@ -133,6 +138,7 @@ function LoadedPane({
   onOpenPath,
   onOpenCommitFile,
   onSwitchEnv,
+  onActivate,
 }: Props & { catalog: Catalog }) {
   const { state, record, refresh } = useFeatureProgress(
     featureDir,
@@ -167,6 +173,13 @@ function LoadedPane({
     resolvedEntry?.workflow.stages.some((s) => s.run === "loop"),
   );
   const loopRun = useLoopRun(repoRoot, featureDir, feature, hasLoop);
+  const loopIndex = (resolvedEntry?.workflow.stages ?? []).findIndex(
+    (s) => s.run === "loop",
+  );
+  useRunEndNotice(loopRun?.run ?? null, repoRoot, feature, () => {
+    onActivate();
+    if (loopIndex >= 0) setSelected(loopIndex);
+  });
   const ticketTerminals = useTicketTerminals(repoRoot, onOpenCommitFile);
   const [loopSeen, setLoopSeen] = useState(false);
   const forkStages: ForkStage[] = (resolvedEntry?.workflow.stages ?? []).map(
@@ -452,7 +465,7 @@ function LoadedPane({
         progress={progress}
         live={live}
         outOfDate={stale}
-        runStatus={loopRun?.run?.status ?? null}
+        run={loopRun?.run ?? null}
         routePicker={
           <RoutePicker routes={routes} route={state.route} onPick={pickRoute} />
         }

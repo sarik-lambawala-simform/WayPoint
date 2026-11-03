@@ -250,6 +250,10 @@ pub struct RunView {
     /// The command the app started the run with, from the run folder's `launch-line`; None for a
     /// run started elsewhere.
     pub launch_line: Option<String>,
+    /// The file that stops the run when it exists: `<run folder>/stop`.
+    pub stop_file: String,
+    /// The stop file exists. It is also what tells "Stopped by you" from "Done", as both exit 0.
+    pub stop_requested: bool,
 }
 
 /// A ticket's time and cost from the newest run that recorded it.
@@ -297,6 +301,39 @@ const LIVE_COST: &str = "A ticket that is still running counts when it ends.";
 
 /// The file the app writes in a run folder it starts: the command it ran.
 pub const LAUNCH_LINE_FILE: &str = "launch-line";
+
+/// The file whose presence stops a run: the script's default `--stop-file` is `<run-dir>/stop`.
+pub const STOP_FILE: &str = "stop";
+
+/// Asks the live run `run_id` of this repo to stop by writing its stop file, and returns the
+/// file's path. It never signals the script, which commits the ticket in hand and exits by itself.
+/// A name that is not a plain folder name, a run that is not live and a stop already written are
+/// refused, so a stale file never turns a finished run's "Done" into "Stopped by you".
+pub fn request_stop(repo_root: &Path, run_id: &str, env: &Env) -> Result<PathBuf, String> {
+    let plain = !run_id.is_empty()
+        && Path::new(run_id)
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+        && Path::new(run_id).components().count() == 1;
+    if !plain {
+        return Err(format!("{run_id}: not a run folder name."));
+    }
+    let dir = repo_root.join("logs").join(run_id);
+    let state = read_state(&dir);
+    let heartbeat =
+        mtime(&dir.join("heartbeat")).map(|t| env.now.duration_since(t).unwrap_or_default());
+    let going = state.as_ref().is_some_and(|s| s.phase != "finished");
+    let alive = match &state {
+        Some(s) if going => (env.pid_alive)(s.script_pid),
+        _ => None,
+    };
+    if run_status(state.as_ref(), heartbeat, alive) != RunStatus::Live {
+        return Err("The run is not live.".to_string());
+    }
+    let file = dir.join(STOP_FILE);
+    fs::write(&file, b"").map_err(|e| format!("{}: {e}", file.display()))?;
+    Ok(file)
+}
 
 /// A run that is live, and the feature it works on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -406,6 +443,8 @@ fn view_run(
             .ok()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty()),
+        stop_file: dir.join(STOP_FILE).to_string_lossy().into_owned(),
+        stop_requested: dir.join(STOP_FILE).is_file(),
     };
     (view, rows)
 }
@@ -704,6 +743,46 @@ mod tests {
             .unwrap();
         }
         feature
+    }
+
+    #[test]
+    fn a_stop_writes_the_stop_file_of_a_live_run_and_nothing_else() {
+        let repo = tempfile::tempdir().unwrap();
+        let logs = repo.path().join("logs");
+        let dir = write_run(&logs, "r1", "ticket", "01", "");
+        fs::write(dir.join("heartbeat"), "").unwrap();
+        let env = env_at(SystemTime::now());
+        let view = |env: &Env| {
+            read_loop_view(repo.path(), &repo.path().join(".scratch/demo"), "demo", env)
+        };
+        feature_with_tickets(repo.path(), &["01"]);
+        let before = view(&env).run.unwrap();
+        assert!(!before.stop_requested);
+        assert_eq!(before.stop_file, dir.join("stop").to_string_lossy());
+
+        let file = request_stop(repo.path(), "r1", &env).unwrap();
+        assert_eq!(file, dir.join("stop"));
+        assert!(view(&env).run.unwrap().stop_requested);
+
+        // A name that climbs out of logs/, or names nothing, writes nothing.
+        for bad in ["", "..", "../r1", "r1/x", "/etc"] {
+            assert!(request_stop(repo.path(), bad, &env).is_err(), "{bad}");
+        }
+        assert!(!logs.join("stop").exists());
+    }
+
+    #[test]
+    fn a_stop_is_refused_for_a_run_that_is_not_live() {
+        let repo = tempfile::tempdir().unwrap();
+        let logs = repo.path().join("logs");
+        let done = write_run(&logs, "done", "finished", "", "");
+        let died = write_run(&logs, "died", "ticket", "01", "");
+        fs::write(died.join("heartbeat"), "").unwrap();
+        let later = env_at(SystemTime::now() + Duration::from_secs(120));
+        assert!(request_stop(repo.path(), "done", &later).is_err());
+        assert!(request_stop(repo.path(), "died", &later).is_err());
+        assert!(request_stop(repo.path(), "missing", &later).is_err());
+        assert!(!done.join("stop").exists() && !died.join("stop").exists());
     }
 
     #[test]

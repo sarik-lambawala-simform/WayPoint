@@ -244,3 +244,7 @@ export const startLoop = (repoRoot: string, args: string[], line: string) =>
     args,
     launchLine: line,
   });
+
+/** Writes the stop file of a live run (never a signal); resolves with the file's path. */
+export const stopLoop = (repoRoot: string, runId: string) =>
+  invoke<string>("workflows_loop_stop", { repoRoot, runId });

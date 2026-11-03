@@ -37,6 +37,7 @@ type Props = {
   onFeatureTitle: (id: number, title: string) => void; // fork
   onOpenFeaturePath: (path: string) => void; // fork
   onSwitchEnv: (env: WorkspaceEnv) => void; // fork
+  onActivateTab: (id: number) => void; // fork
   onOpenMarkdown: (path: string) => void; // fork
 };
 
@@ -72,6 +73,7 @@ export function WorkspaceSurface({
   onFeatureTitle, // fork
   onOpenFeaturePath, // fork
   onSwitchEnv, // fork
+  onActivateTab, // fork
   onOpenMarkdown, // fork
 }: Props) {
   const kind = activeTab?.kind;
@@ -183,6 +185,7 @@ export function WorkspaceSurface({
           onOpenPath={onOpenFeaturePath}
           onOpenCommitFile={onOpenCommitFile}
           onSwitchEnv={onSwitchEnv}
+          onActivate={onActivateTab}
         />
       </div>
     </div>

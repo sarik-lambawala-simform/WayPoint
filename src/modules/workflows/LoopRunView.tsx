@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { IS_LINUX } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { startLoop } from "./lib/api";
+import { startLoop, stopLoop } from "./lib/api";
 import {
   DEFAULT_LAUNCH,
   type LaunchContext,
@@ -63,6 +63,9 @@ export function LoopRunView({
   const [options, setOptions] = useState(DEFAULT_LAUNCH);
   const [starting, setStarting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // The run id whose stop was asked for here, so "Stopping…" shows before the next read.
+  const [stopAsked, setStopAsked] = useState<string | null>(null);
+  const [stopFailure, setStopFailure] = useState<string | null>(null);
   // A live run counts its time on, and a died run counts the silence.
   const ticking = Boolean(view?.run && view.run.status !== "finished");
   const now = useNow(ticking || formOpen);
@@ -105,6 +108,17 @@ export function LoopRunView({
       },
     );
   };
+  const stopping =
+    run?.status === "live" && (run.stop_requested || stopAsked === run.id);
+  const stop = () => {
+    if (!launch || !run) return;
+    setStopAsked(run.id);
+    setStopFailure(null);
+    stopLoop(launch.repoRoot, run.id).catch((e) => {
+      setStopAsked(null);
+      setStopFailure(String(e));
+    });
+  };
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="loop-run">
       <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border/60 px-3 py-2 text-xs">
@@ -143,6 +157,24 @@ export function LoopRunView({
         ) : (
           <span className="text-muted-foreground">
             No run of this feature yet.
+          </span>
+        )}
+        {launch && run?.status === "live" && !stopping && (
+          <Button size="xs" variant="outline" onClick={stop}>
+            Stop the run
+          </Button>
+        )}
+        {stopping && run && (
+          <span className="text-muted-foreground" data-testid="stopping">
+            Stopping…{" "}
+            <code className="font-mono text-[11px]" title={run.stop_file}>
+              {run.stop_file}
+            </code>
+          </span>
+        )}
+        {stopFailure && (
+          <span className="text-destructive" role="alert">
+            {stopFailure}
           </span>
         )}
         {launch && label && !formOpen && (

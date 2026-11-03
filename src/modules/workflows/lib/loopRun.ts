@@ -24,6 +24,9 @@ export type RunView = {
   cost: Cost;
   /** The command the app started the run with; null for a run started elsewhere. */
   launch_line: string | null;
+  /** The file whose presence stops the run: `<run folder>/stop`. */
+  stop_file: string;
+  stop_requested: boolean;
 };
 
 export type Spent = {
@@ -132,9 +135,4 @@ export function ticketCostText(spent: Spent): {
 export function ticketStatusText(ticket: TicketRow): string {
   if (ticket.running) return "running";
   return ticket.status || "no status";
-}
-
-/** The chip on the Loop's cell: the run's status; nothing when the feature has no run. */
-export function runChipLabel(run: RunView | null): string | null {
-  return run ? run.status : null;
 }

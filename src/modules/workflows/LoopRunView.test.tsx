@@ -22,6 +22,8 @@ const run = (over: Partial<RunView> = {}): RunView => ({
   tickets_ended: 2,
   cost: { usd: 3.1, partial: null },
   launch_line: null,
+  stop_file: "/repo/logs/r/stop",
+  stop_requested: false,
   ...over,
 });
 
@@ -114,14 +116,14 @@ describe("the Loop cell's chip", () => {
       { name: "Loop", run: "loop", optional: false },
     ],
   };
-  const bar = (runStatus: "live" | "finished" | "died" | null) =>
+  const bar = (status: "live" | "finished" | "died" | null) =>
     renderToStaticMarkup(
       <StageBar
         workflow={workflow}
         featureDir="/r/.scratch/x"
         selected={0}
         onSelect={() => {}}
-        runStatus={runStatus}
+        run={status ? run({ status }) : null}
       />,
     );
 
@@ -130,6 +132,32 @@ describe("the Loop cell's chip", () => {
     expect(html.match(/data-testid="run-chip"/g)).toHaveLength(1);
     expect(html.indexOf("run-chip")).toBeGreaterThan(html.indexOf(">Loop<"));
     expect(html).toContain(">died<");
+  });
+
+  it("carries the end reason on the chip until the next run starts", () => {
+    const chip = (r: RunView) =>
+      renderToStaticMarkup(
+        <StageBar
+          workflow={workflow}
+          featureDir="/r/.scratch/x"
+          selected={0}
+          onSelect={() => {}}
+          run={r}
+        />,
+      );
+    expect(chip(run({ exit_code: 1 }))).toContain(
+      ">finished · a ticket failed<",
+    );
+    expect(
+      chip(
+        run({
+          exit_code: 2,
+          quota_resets_at: new Date(2026, 9, 19, 14, 30).toISOString(),
+        }),
+      ),
+    ).toContain(">stopped on quota · resets 14:30<");
+    // The next run is the newest one, so its chip replaces the reason.
+    expect(chip(run({ status: "live", phase: "running" }))).toContain(">live<");
   });
 
   it("shows no chip while the feature has no run", () => {
@@ -180,6 +208,40 @@ describe("the Loop cell's chip", () => {
       );
       expect(html).toContain("other-feature has a live run in this repo.");
       expect(html).toMatch(/<button[^>]*disabled[^>]*>Start the loop/);
+    });
+
+    const live = (over: Partial<RunView> = {}) =>
+      run({
+        status: "live",
+        phase: "running",
+        heartbeat_at_ms: Date.now(),
+        ...over,
+      });
+
+    it("offers Stop the run while the run is live, and not otherwise", () => {
+      const html = renderLaunch({ run: live(), tickets: [] }, target());
+      expect(html).toContain("Stop the run");
+      expect(html).not.toContain("Stopping…");
+      const done = renderLaunch({ run: run(), tickets: [] }, target());
+      expect(done).not.toContain("Stop the run");
+      const died = renderLaunch(
+        { run: run({ status: "died" }), tickets: [] },
+        target(),
+      );
+      expect(died).not.toContain("Stop the run");
+    });
+
+    it("shows Stopping… and the stop file's path once the stop file exists", () => {
+      const html = renderLaunch(
+        {
+          run: live({ stop_requested: true, stop_file: "/r/logs/x/stop" }),
+          tickets: [],
+        },
+        target(),
+      );
+      expect(html).toContain("Stopping…");
+      expect(html).toContain("/r/logs/x/stop");
+      expect(html).not.toContain("Stop the run");
     });
 
     it("shows the launch line the app wrote in the header", () => {
