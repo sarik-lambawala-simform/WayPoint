@@ -30,7 +30,7 @@ comments, so their fork edits are listed here.
 Edits to upstream files are marked `// fork:`: `FeatureTab` and `planFeatureOpen`/`openFeatureTab` in
 `src/modules/tabs/lib/useTabs.ts` (plus the label, the icon and the export), a layer in
 `src/app/components/WorkspaceSurface.tsx`, three palette items in `src/modules/command-palette/commands.ts`,
-and the wiring in `src/app/App.tsx` and `src-tauri/src/lib.rs` (dialog plugin, `workflows_shipped`).
+and the wiring in `src/app/App.tsx` and `src-tauri/src/lib.rs` (dialog plugin, `workflows_shipped`, `workflows_catalog`).
 `isSerializableTab` already returns false for unknown kinds, so Terax's tab saving skips feature tabs; the
 `workflows` module saves and reopens them itself (`waypoint-features.json`). New Rust dependencies:
 `serde_norway` (workflow files) and `tauri-plugin-dialog`. The shipped workflow is

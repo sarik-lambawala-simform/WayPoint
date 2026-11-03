@@ -300,7 +300,7 @@ fn validate(file: &str, src: &str, w: &Workflow) -> Result<(), LoadError> {
         let first = start_of(i);
         let last = end_of(i).max(first);
         if !names.insert(stage.name.as_str()) {
-            let line = line_of_text(src, first, last, &stage.name);
+            let line = line_of_text(src, first, last, &format!("name: {}", stage.name));
             return Err(err(
                 file,
                 line,
