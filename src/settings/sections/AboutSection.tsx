@@ -90,6 +90,7 @@ export function AboutSection() {
         </dd>
 
         <dt className="text-muted-foreground">Bundle ID</dt>
+        {/* fork: WayPoint identifier */}
         <dd className="font-mono text-[11.5px]">com.simform.workflows</dd>
 
         <dt className="text-muted-foreground">License</dt>

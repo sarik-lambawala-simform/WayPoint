@@ -1,3 +1,4 @@
+<!-- fork: rewritten for WayPoint; upstream Terax README content is trimmed. -->
 <div align="center">
   <img src="public/logo.png" width="144" height="144" alt="WayPoint" />
   <h1>WayPoint</h1>
@@ -102,7 +103,7 @@ Installers are on the [Releases](https://github.com/sarik-lambawala-simform/WayP
 
 ### Linux notes
 
-- **AppImage:** needs FUSE. Without it: `./WayPoint_*.AppImage --appimage-extract-and-run`. On Wayland with rendering glitches, try `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Otherwise the `.deb` / `.rpm` packages link against the system GTK stack and tend to be smoother.
+- **AppImage:** needs FUSE. Without it: `./WayPoint_*.AppImage --appimage-extract-and-run`. On Wayland with rendering glitches, try `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Otherwise the `.deb` package links against the system GTK stack and tend to be smoother.
 
 ## Configure AI
 

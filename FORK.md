@@ -11,7 +11,7 @@ comments, so their fork edits are listed here.
 - `productName` is `WayPoint`; `mainBinaryName` is `waypoint` (so the binary never collides with Terax's).
 - `identifier` is `com.simform.workflows` (free of the product name, so a rename never moves app data).
 - Window `title` is `WayPoint`; `externalBin` is `binaries/wayp-cli`.
-- `bundle.targets` is `appimage`, `deb`, `dmg`, `nsis` (no MSI, no rpm); `createUpdaterArtifacts` is `false`.
+- `bundle.targets` is `appimage`, `deb`, `dmg`, `nsis` (no MSI, no rpm; the leftover `bundle.linux.rpm` block is inert); `createUpdaterArtifacts` is `false`.
 - Copyright, publisher, descriptions and the file-association name are WayPoint's.
 - `plugins.updater` keeps `tauri-plugin-updater` in the build with an empty `pubkey` and no `endpoints`.
 
@@ -31,3 +31,14 @@ comments, so their fork edits are listed here.
 
 `branding/waypoint-mark.svg` is a placeholder. The icons were generated with
 `pnpm tauri icon branding/waypoint-mark.svg -o src-tauri/icons`; `public/logo.png` is a copy of the 256 px icon.
+
+## Deleted upstream files
+
+`flake.nix`, `flake.lock`, `nix/`, `.github/workflows/update-nix-sources.yml`,
+`.github/workflows/signpath-test.yml`, `terax-icon.png`.
+
+## Known coexistence hazard
+
+Agent hook installs (`agent.rs`) write `__terax_notify` hooks into shared user config
+(`~/.claude`, Pi extension). Both apps rewrite the same entries to their own executable; the spec keeps the
+hook commands unchanged, so this is left for a later ticket.

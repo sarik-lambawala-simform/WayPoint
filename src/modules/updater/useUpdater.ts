@@ -9,6 +9,7 @@ import { IS_LINUX } from "@/lib/platform";
 const UPDATES_ENABLED = false;
 const LAST_CHECK_KEY = "terax:updater:last-check";
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
+// fork: points at the WayPoint repo (unused while UPDATES_ENABLED is false).
 const GITHUB_LATEST_RELEASE =
   "https://api.github.com/repos/sarik-lambawala-simform/WayPoint/releases/latest";
 
