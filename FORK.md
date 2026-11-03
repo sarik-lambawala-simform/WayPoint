@@ -13,7 +13,16 @@ comments, so their fork edits are listed here.
 - Window `title` is `WayPoint`; `externalBin` is `binaries/wayp-cli`.
 - `bundle.targets` is `appimage`, `deb`, `dmg`, `nsis` (no MSI, no rpm; the leftover `bundle.linux.rpm` block is inert); `createUpdaterArtifacts` is `false`.
 - Copyright, publisher, descriptions and the file-association name are WayPoint's.
+- `version` is `0.1.0` (WayPoint's own series; `package.json` and `Cargo.toml` match). `bundle.macOS.signingIdentity` is `"-"` (ad-hoc signing, no notarization).
 - `plugins.updater` keeps `tauri-plugin-updater` in the build with an empty `pubkey` and no `endpoints`.
+
+## `package.json`
+
+- `version` is `0.1.0`.
+
+## `.github/workflows/release.yml`
+
+- `create-release` makes the draft release and reads the upstream tag from the "based on release tag" line at the top of this file, so keep that sentence's wording.
 
 ## `src-tauri/tauri.windows.conf.json`
 

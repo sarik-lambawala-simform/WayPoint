@@ -20,7 +20,6 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Require the tag to match the app version
-        if: startsWith(github.ref, 'refs/tags/')
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           case "$GITHUB_REF_NAME" in "v$VERSION"|"v$VERSION"-*) ;; *) echo "::error::tag $GITHUB_REF_NAME does not match tauri.conf.json version $VERSION"; exit 1 ;; esac
@@ -124,6 +123,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04' && startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
         run: |
           set -euo pipefail
 
@@ -164,7 +164,6 @@ jobs:
           cp "$WORK/$BASENAME" "$APPIMAGE"
 
           # Replace the asset in the draft release by id (gh release upload cannot find drafts by tag).
-          RELEASE_ID="${{ needs.create-release.outputs.release_id }}"
           OLD=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --paginate \
             --jq ".[] | select(.name == \"$BASENAME\") | .id")
           for id in $OLD; do
