@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Stage, Workflow } from "./api";
 import {
+  ageOf,
   computeProgress,
   featureTabTitle,
   headerActions,
@@ -76,6 +77,7 @@ describe("computeProgress", () => {
   it("lands on the Loop for a folder holding a spec and tickets, with no record", () => {
     const i = input({
       featureFiles: ["spec.md", "issues/01-a.md", "issues/02-b.md"],
+      buildTickets: ["01-a.md", "02-b.md"],
       repoFiles: ["docs/agents/issue-tracker.md"],
     });
     const p = computeProgress(i);
@@ -198,6 +200,7 @@ describe("computeProgress", () => {
   it("does not let Retro pull the current stage past an unfinished Loop", () => {
     const i = input({
       featureFiles: ["spec.md", "issues/01-a.md"],
+      buildTickets: ["01-a.md"],
       repoFiles: ["docs/agents/issue-tracker.md"],
       featureProgress: mark({ Retro: { skipped: at } }),
     });
@@ -265,6 +268,7 @@ describe("headerActions", () => {
   const loop = computeProgress(
     input({
       featureFiles: ["spec.md", "issues/01-a.md"],
+      buildTickets: ["01-a.md"],
       repoFiles: ["docs/agents/issue-tracker.md"],
     }),
   );
@@ -293,5 +297,122 @@ describe("headerActions", () => {
     );
     expect(headerActions(later, 2)).toMatchObject({ done: true, skip: true });
     expect(headerActions(later, 3)).toMatchObject({ done: false, skip: false });
+  });
+});
+
+const files = ["spec.md", "issues/01-a.md"];
+const repoFiles = ["docs/agents/issue-tracker.md"];
+
+describe("the tickets gate", () => {
+  const tickets = (buildTickets: string[]) =>
+    computeProgress(input({ featureFiles: files, repoFiles, buildTickets }));
+
+  it("passes with one build ticket, human tickets included", () => {
+    const p = tickets(["01-a.md"]);
+    expect(p.stages[4].gatePasses).toBe(true);
+    expect(p.stages[4].state).toBe("done");
+  });
+
+  it("does not pass when the folder holds only wayfinder tickets or none", () => {
+    // issues/*.md exists, but the Rust reader found no build ticket among them.
+    const p = tickets([]);
+    expect(p.stages[4].gatePasses).toBe(false);
+    expect(p.stages[p.current as number].name).toBe("Tickets");
+  });
+});
+
+describe("the check gate", () => {
+  const lint: Workflow = {
+    id: "w",
+    title: "W",
+    description: "",
+    stages: [
+      stage("Build", { done_when: "confirm" }),
+      stage("Lint", { done_when: { check: "pnpm lint {{ feature }}" } }),
+      stage("Ship", { done_when: "confirm" }),
+    ],
+  };
+  const run = (stages?: ProgressFile["stages"]) =>
+    computeProgress(
+      input({
+        workflow: lint,
+        featureProgress: mark({ Build: { confirmed: at }, ...stages }),
+      }),
+    );
+
+  it("stays unmet until a pass is recorded, and carries its command", () => {
+    const p = run();
+    expect(p.stages[1].state).toBe("current");
+    expect(p.stages[1].gate).toBe("check");
+    expect(p.stages[1].check).toBe("pnpm lint {{ feature }}");
+    expect(p.stages[1].markedAt).toBeNull();
+  });
+
+  it("passes on a recorded pass and keeps its time", () => {
+    const p = run({ Lint: { "check passed": at } });
+    expect(p.stages[1].state).toBe("done");
+    expect(p.stages[1].markedAt).toBe(at);
+    expect(p.current).toBe(2);
+  });
+
+  it("keeps Next pressable on a check stage, since Next runs the check", () => {
+    const p = run();
+    expect(headerActions(p, 1)).toMatchObject({
+      next: "Ship",
+      nextEnabled: true,
+      recheck: true,
+    });
+    expect(headerActions(p, 0).recheck).toBe(false);
+    expect(headerActions(p, 2).recheck).toBe(false);
+  });
+});
+
+describe("a scope: repo stage", () => {
+  const repoOnly = (over: Partial<ProgressInput>) =>
+    computeProgress(input({ featureFiles: [], ...over })).stages[0];
+
+  it("resolves produces against the repo files and is done in every feature", () => {
+    for (const featureFiles of [[], ["spec.md"]]) {
+      const s = repoOnly({ repoFiles, featureFiles });
+      expect(s.state).toBe("done");
+      expect(s.repoScoped).toBe(true);
+    }
+    expect(
+      repoOnly({
+        repoFiles: [],
+        featureFiles: ["docs/agents/issue-tracker.md"],
+      }).state,
+    ).toBe("current");
+  });
+
+  it("records in the repo-root progress.yaml, not the feature's", () => {
+    const setup: Workflow = {
+      ...mattPocock,
+      stages: [
+        stage("Setup", { scope: "repo", done_when: "confirm" }),
+        stage("Grill", { done_when: "confirm" }),
+      ],
+    };
+    const base = { workflow: setup, featureFiles: [] };
+    expect(
+      computeProgress(
+        input({ ...base, repoProgress: mark({ Setup: { confirmed: at } }) }),
+      ).stages[0].state,
+    ).toBe("done");
+    expect(
+      computeProgress(
+        input({ ...base, featureProgress: mark({ Setup: { confirmed: at } }) }),
+      ).stages[0].state,
+    ).toBe("current");
+  });
+});
+
+describe("ageOf", () => {
+  const now = new Date("2026-11-03T12:00:00Z");
+  it("reads a pass's age", () => {
+    expect(ageOf("2026-11-03T11:59:40Z", now)).toBe("just now");
+    expect(ageOf("2026-11-03T11:55:00Z", now)).toBe("5 min ago");
+    expect(ageOf("2026-11-03T09:00:00Z", now)).toBe("3 h ago");
+    expect(ageOf("2026-11-01T12:00:00Z", now)).toBe("2 d ago");
   });
 });

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { type Catalog, fetchCatalog } from "./lib/api";
+import { CheckOutput } from "./CheckOutput";
+import {
+  type Catalog,
+  type CheckResult,
+  fetchCatalog,
+  runCheck,
+} from "./lib/api";
 import { joinPath } from "./lib/featurePaths";
 import { featureTabTitle, headerActions } from "./lib/progress";
 import { StageBar } from "./StageBar";
@@ -68,6 +74,11 @@ function LoadedPane({
 }: Props & { catalog: Catalog }) {
   const { state, record } = useFeatureProgress(featureDir, repoRoot, catalog);
   const [selected, setSelected] = useState<number | null>(null);
+  const [failed, setFailed] = useState<{
+    key: string;
+    result: CheckResult;
+  } | null>(null);
+  const [checking, setChecking] = useState(false);
   const progress = state?.progress ?? null;
   const title = featureTabTitle(feature, progress);
 
@@ -123,6 +134,59 @@ function LoadedPane({
     );
   };
 
+  /** Runs the stage's check; the only place a check ever runs. Returns whether it passed. */
+  const check = async () => {
+    if (!shown?.check || checking) return false;
+    setChecking(true);
+    try {
+      const result = await runCheck(
+        repoRoot,
+        featureDir,
+        entry.dir,
+        shown.check,
+      );
+      if (result.passed) {
+        setFailed(null);
+        await record(
+          { kind: "mark", stage: shown.key, mark: "passed", at: now() },
+          markDir,
+        );
+      } else {
+        setFailed({ key: shown.key, result });
+        // A failing recheck withdraws an older pass.
+        if (shown.markedAt)
+          await record(
+            { kind: "mark", stage: shown.key, mark: "clear", at: now() },
+            markDir,
+          );
+      }
+      return result.passed;
+    } catch (e) {
+      console.error("could not run the check", e);
+      setFailed({
+        key: shown.key,
+        result: {
+          passed: false,
+          exit_code: null,
+          output: String(e),
+          command: shown.check,
+        },
+      });
+      return false;
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const onNext = async () => {
+    // "Next" on a check stage that has not passed runs the check first.
+    if (shown?.gate === "check" && shown.state !== "done") {
+      if (!(await check())) return;
+    }
+    setFailed(null);
+    setSelected(index + 1);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <StageBar
@@ -159,14 +223,20 @@ function LoadedPane({
             joinPath(shown.repoScoped ? repoRoot : featureDir, rel)
           }
           onOpen={onOpenPath}
-          onNext={() => setSelected(index + 1)}
+          onNext={() => void onNext()}
+          onRecheck={() => void check()}
+          checking={checking}
           onDone={() => void mark("confirmed")}
           onSkip={() => void mark("skipped")}
         />
       )}
-      <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-        {shown ? `${shown.name} has not started yet.` : null}
-      </div>
+      {failed && shown && failed.key === shown.key ? (
+        <CheckOutput result={failed.result} />
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+          {shown ? `${shown.name} has not started yet.` : null}
+        </div>
+      )}
     </div>
   );
 }

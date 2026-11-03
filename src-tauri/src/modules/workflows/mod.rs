@@ -2,6 +2,7 @@
 //! merges rarely touch them.
 
 pub mod catalog;
+pub mod check;
 pub mod commands;
 pub mod progress;
 pub mod workflow;

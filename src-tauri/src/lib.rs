@@ -348,6 +348,8 @@ pub fn run() {
             workflows::commands::workflows_read_progress, // fork
             workflows::commands::workflows_record_progress, // fork
             workflows::commands::workflows_list_files, // fork
+            workflows::commands::workflows_run_check, // fork
+            workflows::commands::workflows_build_tickets, // fork
             workspace::workspace_current_dir,
             control::control_frontend_ready,
             control::control_respond,

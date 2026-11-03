@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  buildTickets,
   type Catalog,
   listFiles,
   type ProgressRead,
@@ -59,15 +60,17 @@ export function useFeatureProgress(
     const route = feature.file?.route ?? null;
     if ("entry" in resolved) {
       const workflow = resolved.entry.workflow;
-      const [featureFiles, repoFiles] = await Promise.all([
+      const [featureFiles, repoFiles, tickets] = await Promise.all([
         listFiles(featureDir, [""]),
         listFiles(repoRoot, repoListDirs(workflow)),
+        buildTickets(featureDir),
       ]);
       progress = computeProgress({
         workflow,
         route,
         featureFiles,
         repoFiles,
+        buildTickets: tickets,
         repoProgress: repo.file,
         featureProgress: feature.file,
       });

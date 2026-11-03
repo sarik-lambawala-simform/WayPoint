@@ -1,6 +1,6 @@
+import { native } from "@/modules/ai/lib/native";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { native } from "@/modules/ai/lib/native";
 import { featureDirOf, scratchDir } from "./featurePaths";
 import type { ProgressFile } from "./progress";
 
@@ -98,7 +98,7 @@ export type ProgressUpdate =
   | {
       kind: "mark";
       stage: string;
-      mark: "confirmed" | "skipped" | "clear";
+      mark: "confirmed" | "skipped" | "passed" | "clear";
       at: string;
     };
 
@@ -113,3 +113,30 @@ export const recordProgress = (dir: string, update: ProgressUpdate) =>
 /** Relative paths of the files under each of `dirs` ("" is `root` itself). */
 export const listFiles = (root: string, dirs: string[]) =>
   invoke<string[]>("workflows_list_files", { root, dirs });
+
+/** Names of the build tickets in `<featureDir>/issues`: human tickets count, wayfinder ones don't. */
+export const buildTickets = (featureDir: string) =>
+  invoke<string[]>("workflows_build_tickets", { featureDir });
+
+export type CheckResult = {
+  passed: boolean;
+  /** Null when the command did not start, timed out or was killed. */
+  exit_code: number | null;
+  output: string;
+  /** The command as run, placeholders filled in. */
+  command: string;
+};
+
+/** Runs a `check` gate's command in the repo root. Only "Next" and "Recheck" call this. */
+export const runCheck = (
+  repoRoot: string,
+  featureDir: string,
+  workflowDir: string,
+  command: string,
+) =>
+  invoke<CheckResult>("workflows_run_check", {
+    repoRoot,
+    featureDir,
+    workflowDir,
+    command,
+  });

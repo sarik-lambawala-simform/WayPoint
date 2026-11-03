@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 import type { Workflow } from "./lib/api";
 import type { Progress } from "./lib/progress";
 import { StageChips } from "./StageChips";
@@ -58,7 +58,10 @@ export function StageBar({
           <span className="tabular-nums text-[11px] opacity-60">{i + 1}</span>
           <span>{progress?.stages[i]?.name ?? stage.name}</span>
           {progress?.stages[i] && (
-            <StageChips state={progress.stages[i].state} />
+            <StageChips
+              state={progress.stages[i].state}
+              repoScoped={progress.stages[i].repoScoped}
+            />
           )}
         </button>
       ))}

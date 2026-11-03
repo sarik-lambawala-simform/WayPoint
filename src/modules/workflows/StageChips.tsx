@@ -16,8 +16,16 @@ const TONE: Partial<Record<StageState, string>> = {
 };
 
 /** The chip for a stage's state; a stage that has not come up yet has none. */
-export function StageChips({ state }: { state: StageState }) {
-  const label = LABEL[state];
+export function StageChips({
+  state,
+  repoScoped = false,
+}: {
+  state: StageState;
+  /** A `scope: repo` stage that is done is done for every feature of the repo. */
+  repoScoped?: boolean;
+}) {
+  const label =
+    state === "done" && repoScoped ? "done (repo-wide)" : LABEL[state];
   if (!label) return null;
   return (
     <span

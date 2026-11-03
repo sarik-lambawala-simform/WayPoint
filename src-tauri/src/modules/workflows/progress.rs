@@ -21,6 +21,13 @@ pub struct StageMark {
     pub confirmed: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipped: Option<String>,
+    /// When a `check` gate last passed.
+    #[serde(
+        default,
+        rename = "check passed",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub check_passed: Option<String>,
     /// Keys a later version wrote; kept so a write never drops them.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -56,6 +63,8 @@ pub struct ProgressRead {
 pub enum Mark {
     Confirmed,
     Skipped,
+    /// A `check` gate passed.
+    Passed,
     Clear,
 }
 
@@ -123,12 +132,18 @@ pub fn apply_update(file: &mut ProgressFile, update: &Update) {
             let entry = file.stages.entry(stage.clone()).or_default();
             entry.confirmed = None;
             entry.skipped = None;
+            entry.check_passed = None;
             match mark {
                 Mark::Confirmed => entry.confirmed = Some(at.clone()),
                 Mark::Skipped => entry.skipped = Some(at.clone()),
+                Mark::Passed => entry.check_passed = Some(at.clone()),
                 Mark::Clear => {}
             }
-            if entry.confirmed.is_none() && entry.skipped.is_none() && entry.extra.is_empty() {
+            if entry.confirmed.is_none()
+                && entry.skipped.is_none()
+                && entry.check_passed.is_none()
+                && entry.extra.is_empty()
+            {
                 file.stages.remove(stage);
             }
         }
@@ -270,6 +285,21 @@ mod tests {
         assert!(file.stages["Grill"].confirmed.is_none());
         assert!(file.stages["Grill"].skipped.is_some());
         let file = record(dir.path(), &mark("Grill", Mark::Clear)).unwrap();
+        assert!(file.stages.is_empty());
+    }
+
+    #[test]
+    fn a_check_pass_is_written_under_check_passed_and_cleared_by_clear() {
+        let dir = tempfile::tempdir().unwrap();
+        record(dir.path(), &mark("Lint", Mark::Passed)).unwrap();
+        let text = fs::read_to_string(dir.path().join(PROGRESS_FILE)).unwrap();
+        assert!(text.contains("check passed:"), "{text}");
+        let file = read_progress(dir.path()).file.unwrap();
+        assert_eq!(
+            file.stages["Lint"].check_passed.as_deref(),
+            Some("2026-11-03T10:00:00Z")
+        );
+        let file = record(dir.path(), &mark("Lint", Mark::Clear)).unwrap();
         assert!(file.stages.is_empty());
     }
 

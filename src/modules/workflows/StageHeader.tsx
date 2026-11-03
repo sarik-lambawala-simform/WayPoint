@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import type { HeaderActions, StageProgress } from "./lib/progress";
+import { ageOf, type HeaderActions, type StageProgress } from "./lib/progress";
 import { StageChips } from "./StageChips";
 
 type Props = {
@@ -11,6 +11,9 @@ type Props = {
   onNext: () => void;
   onDone: () => void;
   onSkip: () => void;
+  onRecheck?: () => void;
+  /** True while a check is running. */
+  checking?: boolean;
 };
 
 /** One line under the stage bar: the stage, its chips, what it produced, and what to do next. */
@@ -22,17 +25,32 @@ export function StageHeader({
   onNext,
   onDone,
   onSkip,
+  onRecheck,
+  checking = false,
 }: Props) {
   const literal = stage.produces.filter((p) => !p.includes("*"));
   const missing = literal.filter((p) => !stage.produced.includes(p));
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-3 py-1.5 text-xs">
       <span className="font-medium">{stage.name}</span>
-      <StageChips state={stage.state} />
+      <StageChips state={stage.state} repoScoped={stage.repoScoped} />
       {stage.markedAt && (
-        <span className="text-[11px] text-muted-foreground">
-          {new Date(stage.markedAt).toLocaleString()}
+        <span
+          className="text-[11px] text-muted-foreground"
+          title={new Date(stage.markedAt).toLocaleString()}
+        >
+          {stage.gate === "check"
+            ? `check passed ${ageOf(stage.markedAt, new Date())}`
+            : new Date(stage.markedAt).toLocaleString()}
         </span>
+      )}
+      {stage.check && (
+        <code
+          className="min-w-0 truncate rounded bg-muted px-1.5 py-px font-mono text-[11px]"
+          title={stage.check}
+        >
+          $ {stage.check}
+        </code>
       )}
       {(stage.produced.length > 0 || missing.length > 0) && (
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-[11px]">
@@ -61,6 +79,16 @@ export function StageHeader({
             Skip
           </Button>
         )}
+        {actions.recheck && onRecheck && (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={checking}
+            onClick={onRecheck}
+          >
+            Recheck
+          </Button>
+        )}
         {actions.done && (
           <Button size="xs" variant="outline" onClick={onDone}>
             Done
@@ -69,7 +97,7 @@ export function StageHeader({
         {actions.next && (
           <Button
             size="xs"
-            disabled={!actions.nextEnabled}
+            disabled={!actions.nextEnabled || checking}
             onClick={onNext}
             title={
               actions.nextEnabled

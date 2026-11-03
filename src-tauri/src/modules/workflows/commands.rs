@@ -1,8 +1,12 @@
 use std::path::PathBuf;
 
 use super::catalog::{build_catalog, user_workflows_dir, Catalog};
+use super::check::{run_check, CheckResult};
 use super::progress::{self, ProgressFile, ProgressRead, Update};
-use super::workflow::{shipped_workflow, Workflow};
+use super::workflow::{shipped_workflow, Vars, Workflow};
+use crate::modules::ralph::tickets::read_tickets;
+
+const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 #[tauri::command]
 pub fn workflows_shipped() -> Result<Workflow, String> {
@@ -56,4 +60,90 @@ pub async fn workflows_list_files(root: String, dirs: Vec<String>) -> Vec<String
     })
     .await
     .unwrap_or_default()
+}
+
+/// Runs a `check` gate's command in the repo root. Called only from "Next" and "Recheck".
+#[tauri::command]
+pub async fn workflows_run_check(
+    repo_root: String,
+    feature_dir: String,
+    workflow_dir: String,
+    command: String,
+) -> Result<CheckResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let root = PathBuf::from(&repo_root);
+        if !root.is_absolute() || !root.is_dir() {
+            return Err(format!("{repo_root}: not a folder"));
+        }
+        let feature = PathBuf::from(&feature_dir);
+        let feature = feature
+            .strip_prefix(&root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or(feature_dir);
+        let vars = Vars {
+            feature: &feature,
+            workflow_dir: &workflow_dir,
+        };
+        Ok(run_check(&root, &command, &vars, CHECK_TIMEOUT))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The names of the build tickets in a feature's `issues/` folder, by the ticket reader's rule:
+/// a wayfinder ticket (a plain `Type:` line or a `## Question` heading) is not one; a human
+/// ticket is. A missing folder holds none.
+#[tauri::command]
+pub async fn workflows_build_tickets(feature_dir: String) -> Vec<String> {
+    tokio::task::spawn_blocking(move || {
+        let dir = PathBuf::from(feature_dir);
+        if !dir.is_absolute() {
+            return Vec::new();
+        }
+        build_tickets(&dir.join("issues"))
+    })
+    .await
+    .unwrap_or_default()
+}
+
+pub fn build_tickets(issues_dir: &std::path::Path) -> Vec<String> {
+    read_tickets(issues_dir)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|t| !t.wayfinder)
+        .map(|t| {
+            t.path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_tickets;
+
+    #[test]
+    fn build_and_human_tickets_count_and_wayfinder_tickets_do_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = |n: &str, t: &str| std::fs::write(dir.path().join(n), t).unwrap();
+        w("00-index.md", "# index\n");
+        w(
+            "01-build.md",
+            "# 01 — Build\n\n**Status:** ready-for-agent\n",
+        );
+        w(
+            "02-hitl-check.md",
+            "# 02 — Human\n\n**Status:** ready-for-human\n",
+        );
+        w("03-way.md", "# 03 — Way\n\nType: question\n");
+        w("04-way2.md", "# 04 — Way\n\n## Question\n");
+        w("05-note.txt", "x");
+        assert_eq!(
+            build_tickets(dir.path()),
+            ["01-build.md", "02-hitl-check.md"]
+        );
+        assert!(build_tickets(&dir.path().join("none")).is_empty());
+    }
 }

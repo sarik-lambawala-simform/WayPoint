@@ -3,7 +3,12 @@
 
 import type { Stage, Workflow } from "./api";
 
-export type Marks = { confirmed?: string | null; skipped?: string | null };
+export type Marks = {
+  confirmed?: string | null;
+  skipped?: string | null;
+  /** When a `check` gate last passed. */
+  "check passed"?: string | null;
+};
 
 /** What `progress.yaml` holds: the workflow, the route and per stage a mark, keyed by plain name. */
 export type ProgressFile = {
@@ -40,8 +45,10 @@ export type StageProgress = {
   produces: string[];
   /** Files the `produces` entries matched, relative to the stage's own folder. */
   produced: string[];
-  /** When the stage was confirmed or skipped. */
+  /** When the stage was confirmed or skipped, or its check passed. */
   markedAt: string | null;
+  /** The shell command of a `check` gate, placeholders unfilled; null on any other gate. */
+  check: string | null;
 };
 
 export type Progress = {
@@ -63,6 +70,8 @@ export type ProgressInput = {
   repoFiles: string[];
   repoProgress: ProgressFile | null;
   featureProgress: ProgressFile | null;
+  /** Names of the build tickets in `issues/`, by the Rust reader's rule (`workflows_build_tickets`). */
+  buildTickets?: string[];
 };
 
 /** A stage with the chosen route's overrides applied. */
@@ -106,8 +115,8 @@ export function matchProduces(entry: string, files: string[]): string[] {
 }
 
 /**
- * Gates not built yet fall back to what a plain file check can say: `tickets` and `map` use the
- * stage's `produces`, `check` and a stage with no gate at all stay unmet until their tickets land.
+ * `map` still falls back to the stage's `produces`, and a stage with no gate and no `produces`
+ * stays unmet.
  */
 function gateKind(stage: Stage): GateKind {
   const w = stage.done_when;
@@ -132,8 +141,10 @@ function evaluate(stage: Stage & { key: string }, input: ProgressInput) {
 
   let gatePasses = false;
   if (kind === "confirm") gatePasses = Boolean(marks.confirmed);
-  else if (kind === "produces" || kind === "tickets" || kind === "map")
-    gatePasses = everyMatches;
+  else if (kind === "check") gatePasses = Boolean(marks["check passed"]);
+  else if (kind === "tickets")
+    gatePasses = (input.buildTickets ?? []).length > 0;
+  else if (kind === "produces" || kind === "map") gatePasses = everyMatches;
 
   const skipped = stage.optional && Boolean(marks.skipped) && !gatePasses;
   return {
@@ -143,7 +154,13 @@ function evaluate(stage: Stage & { key: string }, input: ProgressInput) {
     produced,
     gatePasses,
     skipped,
-    markedAt: (skipped ? marks.skipped : marks.confirmed) ?? null,
+    check:
+      kind === "check" && typeof stage.done_when === "object"
+        ? (stage.done_when as { check: string }).check
+        : null,
+    markedAt:
+      (skipped ? marks.skipped : (marks.confirmed ?? marks["check passed"])) ??
+      null,
   };
 }
 
@@ -197,6 +214,7 @@ export function computeProgress(input: ProgressInput): Progress {
       produces: r.produces,
       produced: r.produced,
       markedAt: passes[i] ? r.markedAt : null,
+      check: r.check,
     };
   });
   return { stages, current, lastPassed, done };
@@ -243,6 +261,8 @@ export type HeaderActions = {
   nextEnabled: boolean;
   done: boolean;
   skip: boolean;
+  /** A `check` stage offers "Recheck" once it has come up. */
+  recheck: boolean;
 };
 
 export function headerActions(
@@ -258,8 +278,23 @@ export function headerActions(
   const passed = stage.state === "done" || stage.state === "skipped";
   return {
     next: offersNext ? following.name : null,
-    nextEnabled: offersNext && passed,
+    // On a `check` stage "Next" is what runs the check, so it stays pressable.
+    nextEnabled: offersNext && (passed || (stage.gate === "check" && !pending)),
     done: stage.gate === "confirm" && !passed && !pending,
     skip: stage.optional && !passed && !pending,
+    recheck: stage.gate === "check" && !pending,
   };
+}
+
+/** How long ago `iso` was, as the header shows a check's pass: "just now", "5 min ago". */
+export function ageOf(iso: string, now: Date): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const s = Math.max(0, Math.round((now.getTime() - t) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ago`;
+  return `${Math.floor(h / 24)} d ago`;
 }

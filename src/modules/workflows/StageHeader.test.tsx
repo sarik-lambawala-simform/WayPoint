@@ -14,6 +14,7 @@ const stage: StageProgress = {
   produces: ["spec.md", "notes/*.txt"],
   produced: ["spec.md"],
   markedAt: null,
+  check: null,
 };
 
 const render = (
@@ -27,6 +28,7 @@ const render = (
         nextEnabled: false,
         done: false,
         skip: false,
+        recheck: false,
         ...actions,
       }}
       pathOf={(p) => `/r/.scratch/login/${p}`}
@@ -59,5 +61,57 @@ describe("StageHeader", () => {
     expect(render({})).not.toContain(">Skip<");
     expect(render({ done: true, skip: true })).toContain(">Done<");
     expect(render({ done: true, skip: true })).toContain(">Skip<");
+  });
+
+  it("shows a check's command and the age of its pass, and Recheck", () => {
+    const html = renderToStaticMarkup(
+      <StageHeader
+        stage={{
+          ...stage,
+          gate: "check",
+          state: "done",
+          check: "pnpm lint",
+          markedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+        }}
+        actions={{
+          next: "Ship",
+          nextEnabled: true,
+          done: false,
+          skip: false,
+          recheck: true,
+        }}
+        pathOf={(p) => p}
+        onOpen={() => {}}
+        onNext={() => {}}
+        onDone={() => {}}
+        onSkip={() => {}}
+        onRecheck={() => {}}
+      />,
+    );
+    expect(html).toContain("$ pnpm lint");
+    expect(html).toContain("check passed 5 min ago");
+    expect(html).toContain(">Recheck<");
+  });
+
+  it("labels a done repo stage as repo-wide", () => {
+    expect(
+      renderToStaticMarkup(
+        <StageHeader
+          stage={{ ...stage, state: "done", repoScoped: true }}
+          actions={{
+            next: null,
+            nextEnabled: false,
+            done: false,
+            skip: false,
+            recheck: false,
+          }}
+          pathOf={(p) => p}
+          onOpen={() => {}}
+          onNext={() => {}}
+          onDone={() => {}}
+          onSkip={() => {}}
+        />,
+      ),
+    ).toContain("done (repo-wide)");
   });
 });
