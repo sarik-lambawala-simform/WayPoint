@@ -35,6 +35,9 @@ and the wiring in `src/app/App.tsx` and `src-tauri/src/lib.rs` (dialog plugin, `
 `workflows` module saves and reopens them itself (`waypoint-features.json`). New Rust dependencies:
 `serde_norway` (workflow files) and `tauri-plugin-dialog`. The shipped workflow is
 `src-tauri/workflows/matt-pocock.yaml`, embedded in the binary and parsed by `modules/workflows`.
+Progress: `modules/workflows/progress.rs` reads and writes `progress.yaml` (workflow, route, confirm and skip marks) and lists
+files for the gates (`workflows_read_progress`, `workflows_record_progress`, `workflows_list_files`); the model is the pure
+`lib/progress.ts`. `WorkspaceSurface.tsx` and `App.tsx` pass the feature tab a title setter and an open-file handler.
 
 ## `.github/workflows/release.yml`
 

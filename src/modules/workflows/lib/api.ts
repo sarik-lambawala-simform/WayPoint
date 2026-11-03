@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { native } from "@/modules/ai/lib/native";
 import { featureDirOf, scratchDir } from "./featurePaths";
+import type { ProgressFile } from "./progress";
 
 export type DoneWhen = "confirm" | "tickets" | "map" | { check: string };
 
@@ -84,3 +85,31 @@ export async function createFeature(
   await native.createDir(dir);
   return dir;
 }
+
+export type ProgressRead = {
+  file: ProgressFile | null;
+  /** A `progress.yaml` that exists but does not load: which file, and why. */
+  error: { file: string; message: string } | null;
+};
+
+export type ProgressUpdate =
+  | { kind: "workflow"; id: string }
+  | { kind: "route"; route: string | null }
+  | {
+      kind: "mark";
+      stage: string;
+      mark: "confirmed" | "skipped" | "clear";
+      at: string;
+    };
+
+/** The `progress.yaml` of a feature folder or of the repo root. */
+export const readProgress = (dir: string) =>
+  invoke<ProgressRead>("workflows_read_progress", { dir });
+
+/** Writes one record to `<dir>/progress.yaml`; the only thing that ever creates the file. */
+export const recordProgress = (dir: string, update: ProgressUpdate) =>
+  invoke<ProgressFile>("workflows_record_progress", { dir, update });
+
+/** Relative paths of the files under each of `dirs` ("" is `root` itself). */
+export const listFiles = (root: string, dirs: string[]) =>
+  invoke<string[]>("workflows_list_files", { root, dirs });

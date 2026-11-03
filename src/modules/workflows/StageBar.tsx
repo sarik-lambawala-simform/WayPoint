@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { Workflow } from "./lib/api";
+import type { Progress } from "./lib/progress";
+import { StageChips } from "./StageChips";
 
 type Props = {
   workflow: Workflow;
@@ -9,6 +11,8 @@ type Props = {
   onSelect: (index: number) => void;
   /** Replaces the plain workflow title, e.g. with the workflow picker. */
   picker?: ReactNode;
+  /** Each stage's state, shown as a chip on its cell. */
+  progress?: Progress | null;
 };
 
 /** Workflow name and feature path first, then one cell per stage in workflow order. */
@@ -18,6 +22,7 @@ export function StageBar({
   selected,
   onSelect,
   picker,
+  progress,
 }: Props) {
   return (
     <div
@@ -51,7 +56,10 @@ export function StageBar({
           )}
         >
           <span className="tabular-nums text-[11px] opacity-60">{i + 1}</span>
-          <span>{stage.name}</span>
+          <span>{progress?.stages[i]?.name ?? stage.name}</span>
+          {progress?.stages[i] && (
+            <StageChips state={progress.stages[i].state} />
+          )}
         </button>
       ))}
     </div>

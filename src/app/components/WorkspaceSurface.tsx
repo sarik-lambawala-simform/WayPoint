@@ -33,6 +33,8 @@ type Props = {
   onOpenCommitFile: GitHistoryStackProps["onOpenCommitFile"];
   onGitHistorySearchHandle: GitHistoryStackProps["onSearchHandle"];
   onSetMarkdownView: EditorStackProps["onSetMarkdownView"];
+  onFeatureTitle: (id: number, title: string) => void; // fork
+  onOpenFeaturePath: (path: string) => void; // fork
 };
 
 const LAYER = "absolute inset-0";
@@ -64,6 +66,8 @@ export function WorkspaceSurface({
   onOpenCommitFile,
   onGitHistorySearchHandle,
   onSetMarkdownView,
+  onFeatureTitle, // fork
+  onOpenFeaturePath, // fork
 }: Props) {
   const kind = activeTab?.kind;
   const isTerminalTab = kind === "terminal";
@@ -165,7 +169,12 @@ export function WorkspaceSurface({
         className={cn(LAYER, !isFeatureTab && "invisible pointer-events-none")}
         aria-hidden={!isFeatureTab}
       >
-        <FeatureStack tabs={tabs} activeId={activeId} />
+        <FeatureStack
+          tabs={tabs}
+          activeId={activeId}
+          onTitle={onFeatureTitle}
+          onOpenPath={onOpenFeaturePath}
+        />
       </div>
     </div>
   );

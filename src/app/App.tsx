@@ -1564,6 +1564,8 @@ export default function App() {
                         onOpenCommitFile={openCommitFileDiffTab}
                         onGitHistorySearchHandle={setGitHistoryHandle}
                         onSetMarkdownView={setMarkdownView}
+                        onFeatureTitle={(id, title) => updateTab(id, { title })} // fork
+                        onOpenFeaturePath={(path) => handleOpenFile(path, true)} // fork
                       />
                     </div>
 

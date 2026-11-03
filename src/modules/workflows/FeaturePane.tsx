@@ -1,46 +1,42 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Catalog, fetchCatalog } from "./lib/api";
-import {
-  loadWorkflowChoice,
-  resolveEntry,
-  saveWorkflowChoice,
-} from "./lib/workflowChoice";
+import { joinPath } from "./lib/featurePaths";
+import { featureTabTitle, headerActions } from "./lib/progress";
 import { StageBar } from "./StageBar";
+import { StageHeader } from "./StageHeader";
+import { useFeatureProgress } from "./useFeatureProgress";
 import { WorkflowPicker } from "./WorkflowPicker";
 
-type Props = { featureDir: string; repoRoot: string };
+type Props = {
+  featureDir: string;
+  repoRoot: string;
+  feature: string;
+  /** Called with the tab's title: `<feature> · <current stage>`. */
+  onTitle: (title: string) => void;
+  /** Opens a produced file: `.md` in a markdown tab, anything else in an editor tab. */
+  onOpenPath: (path: string) => void;
+};
 
-export function FeaturePane({ featureDir, repoRoot }: Props) {
+export function FeaturePane({
+  featureDir,
+  repoRoot,
+  feature,
+  onTitle,
+  onOpenPath,
+}: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [choice, setChoice] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState(0);
 
   useEffect(() => {
     let live = true;
-    Promise.all([fetchCatalog(repoRoot), loadWorkflowChoice(featureDir)]).then(
-      ([c, saved]) => {
-        if (!live) return;
-        setCatalog(c);
-        setChoice(saved);
-      },
+    fetchCatalog(repoRoot).then(
+      (c) => live && setCatalog(c),
       (e) => live && setError(String(e)),
     );
     return () => {
       live = false;
     };
-  }, [repoRoot, featureDir]);
-
-  const pick = useCallback(
-    (id: string) => {
-      setChoice(id);
-      setSelected(0);
-      saveWorkflowChoice(featureDir, id).catch((e) =>
-        console.error("could not save the workflow choice", e),
-      );
-    },
-    [featureDir],
-  );
+  }, [repoRoot]);
 
   if (error) {
     return (
@@ -50,48 +46,115 @@ export function FeaturePane({ featureDir, repoRoot }: Props) {
     );
   }
   if (!catalog) return null;
+  return (
+    <LoadedPane
+      catalog={catalog}
+      featureDir={featureDir}
+      repoRoot={repoRoot}
+      feature={feature}
+      onTitle={onTitle}
+      onOpenPath={onOpenPath}
+    />
+  );
+}
 
-  const entry = resolveEntry(catalog, choice);
-  if (!entry) {
+function LoadedPane({
+  catalog,
+  featureDir,
+  repoRoot,
+  feature,
+  onTitle,
+  onOpenPath,
+}: Props & { catalog: Catalog }) {
+  const { state, record } = useFeatureProgress(featureDir, repoRoot, catalog);
+  const [selected, setSelected] = useState<number | null>(null);
+  const progress = state?.progress ?? null;
+  const title = featureTabTitle(feature, progress);
+
+  const onTitleRef = useRef(onTitle);
+  onTitleRef.current = onTitle;
+  useEffect(() => {
+    onTitleRef.current(title);
+  }, [title]);
+
+  if (!state) return null;
+  if ("error" in state.resolved) {
     return (
-      <div className="flex flex-col gap-1 p-4 text-sm text-destructive">
-        <span>No workflow loaded.</span>
-        {catalog.errors.map((e) => (
-          <span key={`${e.file}:${e.line}`}>
-            {e.file}:{e.line}: {e.message}
-          </span>
-        ))}
+      <div className="flex flex-col gap-1 whitespace-pre-wrap break-all p-4 text-sm text-destructive">
+        {state.resolved.error}
       </div>
     );
   }
 
+  const entry = state.resolved.entry;
   const workflow = entry.workflow;
-  const stage = workflow.stages[selected];
+  const index = Math.min(
+    selected ?? progress?.current ?? progress?.lastPassed ?? 0,
+    Math.max(workflow.stages.length - 1, 0),
+  );
+  const shown = progress?.stages[index];
+  const problems = [
+    ...state.problems,
+    ...(catalog.errors.length === 1
+      ? [
+          `${catalog.errors[0].file}:${catalog.errors[0].line}: ${catalog.errors[0].message}`,
+        ]
+      : catalog.errors.length > 1
+        ? [
+            `${catalog.errors.length} workflow files did not load. Open the workflow picker for the errors.`,
+          ]
+        : []),
+  ];
+
+  const now = () => new Date().toISOString();
+  const markDir = shown?.repoScoped ? repoRoot : featureDir;
+  const mark = (m: "confirmed" | "skipped") =>
+    shown &&
+    record({ kind: "mark", stage: shown.key, mark: m, at: now() }, markDir);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <StageBar
         workflow={workflow}
         featureDir={featureDir}
-        selected={selected}
+        selected={index}
         onSelect={setSelected}
+        progress={progress}
         picker={
           <WorkflowPicker
             title={workflow.title}
             catalog={catalog}
             selectedId={entry.id}
-            onPick={pick}
+            onPick={(id) => {
+              setSelected(null);
+              void record({ kind: "workflow", id });
+            }}
           />
         }
       />
-      {catalog.errors.length > 0 && (
-        <div className="shrink-0 border-b border-border/60 px-3 py-1 text-[11px] text-destructive">
-          {catalog.errors.length === 1
-            ? `${catalog.errors[0].file}:${catalog.errors[0].line}: ${catalog.errors[0].message}`
-            : `${catalog.errors.length} workflow files did not load. Open the workflow picker for the errors.`}
+      {problems.map((p) => (
+        <div
+          key={p}
+          className="shrink-0 break-all border-b border-border/60 px-3 py-1 text-[11px] text-destructive"
+        >
+          {p}
         </div>
+      ))}
+      {progress && shown && (
+        <StageHeader
+          stage={shown}
+          actions={headerActions(progress, index)}
+          pathOf={(rel) =>
+            joinPath(shown.repoScoped ? repoRoot : featureDir, rel)
+          }
+          onOpen={onOpenPath}
+          onNext={() => setSelected(index + 1)}
+          onDone={() => void mark("confirmed")}
+          onSkip={() => void mark("skipped")}
+        />
       )}
       <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-        {stage ? `${stage.name} has not started yet.` : null}
+        {shown ? `${shown.name} has not started yet.` : null}
       </div>
     </div>
   );

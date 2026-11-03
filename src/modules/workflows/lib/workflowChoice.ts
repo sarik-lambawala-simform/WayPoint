@@ -1,38 +1,46 @@
-// Which workflow a feature folder uses. Kept in the module's own store, keyed by the feature
-// folder path; a feature with no choice uses the shipped default.
+// Which workflow a feature folder uses: the id in its progress.yaml, or the shipped default
+// when there is none.
 
-import { LazyStore } from "@tauri-apps/plugin-store";
 import type { Catalog, CatalogEntry } from "./api";
 
 export const DEFAULT_WORKFLOW_ID = "matt-pocock";
 
-/** The entry for a saved id; the shipped default, then the first entry, when it is gone. */
-export function resolveEntry(
+export type Resolved = { entry: CatalogEntry } | { error: string };
+
+const stem = (file: string) =>
+  (file.split(/[\\/]/).pop() ?? file).replace(/\.ya?ml$/i, "");
+
+/**
+ * The entry for the id a progress.yaml names. A named id that does not load is an error that
+ * carries the progress file's path and the load errors of the file by that name; nothing guesses.
+ * With no id the shipped default, then the first entry.
+ */
+export function resolveWorkflow(
   catalog: Catalog,
-  savedId: string | undefined,
-): CatalogEntry | undefined {
-  const byId = (id: string | undefined) =>
-    id === undefined ? undefined : catalog.entries.find((e) => e.id === id);
-  return byId(savedId) ?? byId(DEFAULT_WORKFLOW_ID) ?? catalog.entries[0];
-}
-
-const store = new LazyStore("waypoint-workflow-choice.json", {
-  defaults: {},
-  autoSave: 200,
-});
-
-export async function loadWorkflowChoice(
-  featureDir: string,
-): Promise<string | undefined> {
-  const all = await store.get<Record<string, unknown>>("choices");
-  const id = all?.[featureDir];
-  return typeof id === "string" ? id : undefined;
-}
-
-export async function saveWorkflowChoice(
-  featureDir: string,
-  id: string,
-): Promise<void> {
-  const all = (await store.get<Record<string, string>>("choices")) ?? {};
-  await store.set("choices", { ...all, [featureDir]: id });
+  savedId: string | null | undefined,
+  progressPath: string,
+): Resolved {
+  const byId = (id: string) => catalog.entries.find((e) => e.id === id);
+  if (savedId) {
+    const entry = byId(savedId);
+    if (entry) return { entry };
+    const why = catalog.errors
+      .filter((e) => stem(e.file) === savedId)
+      .map((e) => `${e.file}:${e.line}: ${e.message}`);
+    return {
+      error: [
+        `${progressPath}: the workflow "${savedId}" does not load.`,
+        ...why,
+      ].join("\n"),
+    };
+  }
+  const entry = byId(DEFAULT_WORKFLOW_ID) ?? catalog.entries[0];
+  return entry
+    ? { entry }
+    : {
+        error: [
+          "No workflow loaded.",
+          ...catalog.errors.map((e) => `${e.file}:${e.line}: ${e.message}`),
+        ].join("\n"),
+      };
 }

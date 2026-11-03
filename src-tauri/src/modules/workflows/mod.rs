@@ -3,4 +3,5 @@
 
 pub mod catalog;
 pub mod commands;
+pub mod progress;
 pub mod workflow;

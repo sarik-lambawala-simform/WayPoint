@@ -36,4 +36,38 @@ describe("StageBar", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(order.every((i) => i > -1)).toBe(true);
   });
+
+  it("shows a chip on each stage's cell", () => {
+    const withProgress = renderToStaticMarkup(
+      <StageBar
+        workflow={workflow}
+        featureDir="/r/.scratch/login"
+        selected={1}
+        onSelect={() => {}}
+        progress={{
+          current: 1,
+          lastPassed: 0,
+          done: false,
+          stages: [
+            ["Setup", "done"],
+            ["Grill", "current"],
+            ["Loop", "pending"],
+          ].map(([name, state]) => ({
+            name,
+            key: name,
+            state,
+            gate: "none",
+            gatePasses: false,
+            optional: false,
+            repoScoped: false,
+            produces: [],
+            produced: [],
+            markedAt: null,
+          })) as never,
+        }}
+      />,
+    );
+    expect(withProgress).toContain(">done<");
+    expect(withProgress).toContain(">current<");
+  });
 });

@@ -345,6 +345,9 @@ pub fn run() {
             workspace::workspace_authorize,
             workflows::commands::workflows_shipped, // fork
             workflows::commands::workflows_catalog, // fork
+            workflows::commands::workflows_read_progress, // fork
+            workflows::commands::workflows_record_progress, // fork
+            workflows::commands::workflows_list_files, // fork
             workspace::workspace_current_dir,
             control::control_frontend_ready,
             control::control_respond,
