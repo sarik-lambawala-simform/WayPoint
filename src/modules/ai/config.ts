@@ -1,4 +1,5 @@
-export const KEYRING_SERVICE = "terax-ai";
+// fork: keychain service is waypoint, so it never reads or overwrites an installed Terax's keys.
+export const KEYRING_SERVICE = "waypoint";
 
 export type ProviderId =
   | "openai"

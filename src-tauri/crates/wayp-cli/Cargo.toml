@@ -1,12 +1,12 @@
 [package]
-name = "terax-cli"
+name = "wayp-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
 
 [[bin]]
-name = "terax-cli"
+name = "wayp-cli"
 path = "src/main.rs"
 
 [dependencies]

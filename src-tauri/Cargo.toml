@@ -8,8 +8,9 @@ edition = "2021"
 default-run = "terax"
 
 [workspace]
-members = ["crates/terax-cli", "crates/terax-control-protocol"]
-default-members = [".", "crates/terax-cli", "crates/terax-control-protocol"]
+# fork: crates/terax-cli is now crates/wayp-cli
+members = ["crates/wayp-cli", "crates/terax-control-protocol"]
+default-members = [".", "crates/wayp-cli", "crates/terax-control-protocol"]
 resolver = "2"
 
 [workspace.package]

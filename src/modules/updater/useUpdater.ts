@@ -4,10 +4,13 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useState } from "react";
 import { IS_LINUX } from "@/lib/platform";
 
+// fork: no updater endpoint is configured (releases are installed by hand), so
+// every check is skipped instead of reaching out to Terax's release feed.
+const UPDATES_ENABLED = false;
 const LAST_CHECK_KEY = "terax:updater:last-check";
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const GITHUB_LATEST_RELEASE =
-  "https://api.github.com/repos/crynta/terax-ai/releases/latest";
+  "https://api.github.com/repos/sarik-lambawala-simform/WayPoint/releases/latest";
 
 export interface ManualUpdateInfo {
   version: string;
@@ -85,6 +88,15 @@ export function useUpdater({ autoCheck = true }: HookOptions = {}) {
   const [status, setStatus] = useState<UpdaterStatus>({ kind: "idle" });
 
   const runCheck = useCallback(async ({ manual }: Options = {}) => {
+    if (!UPDATES_ENABLED) {
+      if (manual) {
+        setStatus({
+          kind: "error",
+          message: "Updates are installed by hand from the releases page.",
+        });
+      }
+      return;
+    }
     if (!manual) {
       const last = Number(localStorage.getItem(LAST_CHECK_KEY) ?? 0);
       if (Date.now() - last < CHECK_INTERVAL_MS) return;

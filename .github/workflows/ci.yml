@@ -4,7 +4,8 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    # fork: upstream-sync/* branches (merges of Terax release tags) run the same gates as main.
+    branches: [main, "upstream-sync/*"]
 
 concurrency:
   group: ci-${{ github.ref }}

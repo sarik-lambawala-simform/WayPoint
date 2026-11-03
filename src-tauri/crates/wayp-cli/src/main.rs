@@ -1,3 +1,4 @@
+// fork: this crate was terax-cli; user-visible "Terax" strings now say "WayPoint".
 use std::env;
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -67,7 +68,7 @@ fn main() -> ExitCode {
                     })
                 );
             } else {
-                eprintln!("terax: {}", error.message);
+                eprintln!("wayp: {}", error.message); // fork: CLI is wayp
             }
             ExitCode::from(error.exit)
         }
@@ -82,7 +83,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             Ok(())
         }
         Action::Version => {
-            println!("terax {}", env!("CARGO_PKG_VERSION"));
+            println!("wayp {}", env!("CARGO_PKG_VERSION")); // fork: CLI is wayp
             Ok(())
         }
         Action::Request { method, params } => {
@@ -103,7 +104,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
                 let error = response.error.unwrap_or_else(|| {
                     terax_control_protocol::ControlError::new(
                         "request_failed",
-                        "Terax rejected the request",
+                        "WayPoint rejected the request",
                     )
                 });
                 return Err(CliError::new(error.code, error.message, EXIT_REQUEST));
@@ -237,7 +238,7 @@ fn parse_open(args: Vec<OsString>) -> Result<Action, CliError> {
     let path = canonical.into_os_string().into_string().map_err(|_| {
         CliError::new(
             "non_utf8_path",
-            "Terax cannot open a path that is not valid UTF-8",
+            "WayPoint cannot open a path that is not valid UTF-8",
             EXIT_USAGE,
         )
     })?;
@@ -280,7 +281,7 @@ fn load_endpoint() -> Result<ControlDescriptor, CliError> {
         ),
         (None, None) => {
             let path = dirs::cache_dir()
-                .map(|dir| dir.join("terax").join("control.json"))
+                .map(|dir| dir.join("waypoint").join("control.json")) // fork: control file is waypoint/control.json
                 .ok_or_else(|| {
                     CliError::new(
                         "app_unavailable",
@@ -291,14 +292,14 @@ fn load_endpoint() -> Result<ControlDescriptor, CliError> {
             let bytes = std::fs::read(&path).map_err(|_| {
                 CliError::new(
                     "app_unavailable",
-                    "Terax is not running; start the app and try again",
+                    "WayPoint is not running; start the app and try again",
                     EXIT_UNAVAILABLE,
                 )
             })?;
             let descriptor = serde_json::from_slice(&bytes).map_err(|error| {
                 CliError::new(
                     "invalid_descriptor",
-                    format!("invalid Terax control descriptor: {error}"),
+                    format!("invalid WayPoint control descriptor: {error}"),
                     EXIT_PROTOCOL,
                 )
             })?;
@@ -323,7 +324,7 @@ fn validate_endpoint(
         return Err(CliError::new(
             "unsupported_protocol",
             format!(
-                "Terax uses control protocol {}, but this CLI supports {PROTOCOL_VERSION}",
+                "WayPoint uses control protocol {}, but this CLI supports {PROTOCOL_VERSION}",
                 descriptor.protocol
             ),
             EXIT_PROTOCOL,
@@ -337,7 +338,7 @@ fn validate_endpoint(
     {
         return Err(CliError::new(
             "invalid_endpoint",
-            "Terax control token is invalid",
+            "WayPoint control token is invalid",
             EXIT_PROTOCOL,
         ));
     }
@@ -345,7 +346,7 @@ fn validate_endpoint(
     if require_live_process && !process_is_alive(descriptor.pid) {
         return Err(CliError::new(
             "invalid_endpoint",
-            "Terax control process is not running",
+            "WayPoint control process is not running",
             EXIT_PROTOCOL,
         ));
     }
@@ -388,7 +389,7 @@ fn send_request(address: &str, request: &ControlRequest) -> Result<ControlRespon
     let mut stream = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|error| {
         CliError::new(
             "app_unavailable",
-            format!("could not connect to Terax: {error}"),
+            format!("could not connect to WayPoint: {error}"),
             EXIT_UNAVAILABLE,
         )
     })?;
@@ -404,14 +405,14 @@ fn parse_loopback_address(address: &str) -> Result<SocketAddr, CliError> {
     let address: SocketAddr = address.parse().map_err(|error| {
         CliError::new(
             "invalid_endpoint",
-            format!("invalid Terax control address: {error}"),
+            format!("invalid WayPoint control address: {error}"),
             EXIT_PROTOCOL,
         )
     })?;
     if !address.ip().is_loopback() {
         return Err(CliError::new(
             "invalid_endpoint",
-            "Terax control address must be loopback-only",
+            "WayPoint control address must be loopback-only",
             EXIT_PROTOCOL,
         ));
     }
@@ -443,21 +444,21 @@ fn read_response(
     if bytes.len() > MAX_MESSAGE_BYTES {
         return Err(CliError::new(
             "message_too_large",
-            "Terax response exceeded the protocol limit",
+            "WayPoint response exceeded the protocol limit",
             EXIT_PROTOCOL,
         ));
     }
     if bytes.last() != Some(&b'\n') {
         return Err(CliError::new(
             "invalid_response",
-            "Terax returned an incomplete response",
+            "WayPoint returned an incomplete response",
             EXIT_PROTOCOL,
         ));
     }
     let response: ControlResponse = serde_json::from_slice(&bytes).map_err(|error| {
         CliError::new(
             "invalid_response",
-            format!("Terax returned invalid JSON: {error}"),
+            format!("WayPoint returned invalid JSON: {error}"),
             EXIT_PROTOCOL,
         )
     })?;
@@ -466,7 +467,7 @@ fn read_response(
     if response.protocol != PROTOCOL_VERSION || !matched_id {
         return Err(CliError::new(
             "invalid_response",
-            "Terax returned a mismatched protocol version or request id",
+            "WayPoint returned a mismatched protocol version or request id",
             EXIT_PROTOCOL,
         ));
     }
@@ -501,7 +502,7 @@ fn print_result(method: &str, result: Value, as_json: bool) {
                 .get("app_version")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
-            println!("Terax {version} is running");
+            println!("WayPoint {version} is running");
         }
         METHOD_CAPABILITIES => {
             if let Some(methods) = result.get("methods").and_then(Value::as_array) {
@@ -529,9 +530,9 @@ fn print_result(method: &str, result: Value, as_json: bool) {
             let path = result.get("path").and_then(Value::as_str).unwrap_or("");
             let line = result.get("line").and_then(Value::as_u64);
             if let Some(line) = line {
-                println!("Opened {path}:{line} in Terax");
+                println!("Opened {path}:{line} in WayPoint");
             } else {
-                println!("Opened {path} in Terax");
+                println!("Opened {path} in WayPoint");
             }
         }
         _ => println!("{result}"),
@@ -540,9 +541,9 @@ fn print_result(method: &str, result: Value, as_json: bool) {
 
 fn print_help() {
     println!(
-        "Terax command line interface\n\n\
-Usage:\n  terax <file> [--line <n>] [--no-focus] [--json]\n  terax open <file> [--line <n>] [--no-focus] [--json]\n  terax ping [--json]\n  terax capabilities [--json]\n  terax identify [--json]\n  terax --version\n\n\
-The app must be running. Commands launched in a Terax pane target that pane's space."
+        "WayPoint command line interface\n\n\
+Usage:\n  wayp <file> [--line <n>] [--no-focus] [--json]\n  wayp open <file> [--line <n>] [--no-focus] [--json]\n  wayp ping [--json]\n  wayp capabilities [--json]\n  wayp identify [--json]\n  wayp --version\n\n\
+The app must be running. Commands launched in a WayPoint pane target that pane's space."
     );
 }
 

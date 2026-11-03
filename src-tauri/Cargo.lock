@@ -4947,18 +4947,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "terax-cli"
-version = "0.9.0"
-dependencies = [
- "dirs 7.0.0",
- "libc",
- "serde_json",
- "tempfile",
- "terax-control-protocol",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "terax-control-protocol"
 version = "0.9.0"
 dependencies = [
@@ -5664,6 +5652,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8eab23fefc9e41f8e841df4a9c707e8a8c4ed26e944ef69297184de2785e3be"
 dependencies = [
  "pkg-config",
+]
+
+[[package]]
+name = "wayp-cli"
+version = "0.9.0"
+dependencies = [
+ "dirs 7.0.0",
+ "libc",
+ "serde_json",
+ "tempfile",
+ "terax-control-protocol",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

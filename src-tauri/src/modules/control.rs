@@ -155,7 +155,8 @@ pub fn start(app: tauri::AppHandle, state: ControlState) -> Result<(), String> {
     }
 
     if cli_path.is_none() {
-        log::warn!("bundled terax-cli executable not found; shell alias disabled");
+        log::warn!("bundled wayp-cli executable not found; shell alias disabled");
+        // fork: sidecar is wayp-cli
     }
 
     let listener_state = state.clone();
@@ -569,7 +570,7 @@ fn generate_token() -> Result<String, String> {
 fn descriptor_path() -> Result<PathBuf, String> {
     let cache =
         dirs::cache_dir().ok_or_else(|| "could not resolve user cache directory".to_string())?;
-    let dir = cache.join("terax");
+    let dir = cache.join("waypoint"); // fork: control file is waypoint/control.json
     std::fs::create_dir_all(&dir)
         .map_err(|error| format!("create control directory {}: {error}", dir.display()))?;
     #[cfg(unix)]
@@ -618,9 +619,9 @@ fn remove_own_descriptor(path: &Path, token: &str) {
 
 fn find_bundled_cli() -> Option<PathBuf> {
     let filename = if cfg!(windows) {
-        "terax-cli.exe"
+        "wayp-cli.exe" // fork: sidecar is wayp-cli
     } else {
-        "terax-cli"
+        "wayp-cli"
     };
     if let Some(path) = std::env::current_exe()
         .ok()
@@ -634,7 +635,7 @@ fn find_bundled_cli() -> Option<PathBuf> {
         let binaries = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries");
         let target = option_env!("TAURI_ENV_TARGET_TRIPLE")?;
         let candidate = binaries.join(format!(
-            "terax-cli-{target}{}",
+            "wayp-cli-{target}{}", // fork: sidecar is wayp-cli
             std::env::consts::EXE_SUFFIX
         ));
         return is_cli_candidate(&candidate).then_some(candidate);
@@ -738,7 +739,7 @@ fn prepare_cli_launcher(descriptor: &Path, cli_path: &Path) -> Result<PathBuf, S
             .map_err(|error| format!("secure CLI bin directory: {error}"))?;
     }
 
-    let launcher = bin_dir.join(if cfg!(windows) { "terax.exe" } else { "terax" });
+    let launcher = bin_dir.join(if cfg!(windows) { "wayp.exe" } else { "wayp" }); // fork: CLI is wayp
     if std::fs::symlink_metadata(&launcher).is_ok() {
         std::fs::remove_file(&launcher)
             .map_err(|error| format!("replace stale CLI launcher: {error}"))?;
@@ -757,7 +758,7 @@ fn prepare_cli_launcher(descriptor: &Path, cli_path: &Path) -> Result<PathBuf, S
 }
 
 fn remove_launcher_dir(bin_dir: &Path) {
-    let launcher = bin_dir.join(if cfg!(windows) { "terax.exe" } else { "terax" });
+    let launcher = bin_dir.join(if cfg!(windows) { "wayp.exe" } else { "wayp" }); // fork: CLI is wayp
     let _ = std::fs::remove_file(launcher);
     let _ = std::fs::remove_dir(bin_dir);
     if let Some(run_dir) = bin_dir.parent() {
@@ -920,15 +921,15 @@ mod tests {
     fn launcher_exposes_the_public_command() {
         let temp = tempfile::tempdir().expect("temp directory");
         let cli = temp.path().join(if cfg!(windows) {
-            "terax-cli.exe"
+            "wayp-cli.exe" // fork: sidecar is wayp-cli
         } else {
-            "terax-cli"
+            "wayp-cli"
         });
         std::fs::write(&cli, b"cli").expect("write fake CLI");
         let descriptor = temp.path().join("control.json");
 
         let bin_dir = prepare_cli_launcher(&descriptor, &cli).expect("prepare launcher");
-        let launcher = bin_dir.join(if cfg!(windows) { "terax.exe" } else { "terax" });
+        let launcher = bin_dir.join(if cfg!(windows) { "wayp.exe" } else { "wayp" }); // fork: CLI is wayp
         assert_eq!(std::fs::read(&launcher).expect("read launcher"), b"cli");
 
         remove_launcher_dir(&bin_dir);
