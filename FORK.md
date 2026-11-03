@@ -24,6 +24,14 @@ comments, so their fork edits are listed here.
 
 - `create-release` makes the draft release and reads the upstream tag from the "based on release tag" line at the top of this file, so keep that sentence's wording.
 
+## `ralph/`
+
+The Ralph loop's engine, moved from the Ralph UI repo: `run-ralph-tickets.sh`, `lib/tickets.sh`, and the
+script's tests (`ralph/tests`, run by the `ralph-script` CI job on Linux and macOS). `tauri.conf.json`
+lists both scripts under `bundle.resources` (`ralph/run-ralph-tickets.sh`, `ralph/lib/tickets.sh`). New in
+the script: a `heartbeat` file in the run folder, touched every 5 s (`RALPH_HEARTBEAT_SECS` in tests).
+`.gitattributes` sets `eol=lf` for shell scripts and ticket files.
+
 ## `src-tauri/tauri.windows.conf.json`
 
 - Window `title` is `WayPoint`; the `wix` (MSI) version block is removed.

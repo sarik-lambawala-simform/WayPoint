@@ -1,0 +1,56 @@
+#!/bin/bash
+# Fake `claude` for the run tests. It sits first on PATH, so the script starts
+# this in place of the real CLI.
+#
+# It does what an agent's session looks like from outside: it leaves work in
+# the tree, plays back a saved stream-json file line by line, commits the work,
+# and exits. The test sets it up through the environment:
+#
+#   FAKE_CLAUDE_STREAM  the saved stream to play back (required). Several
+#                       paths split by ":" play one per call, and the last
+#                       one repeats. A quota stop then a resume needs two.
+#   FAKE_CLAUDE_CALLS   a file this appends one line to per call, which is how
+#                       it counts calls  [required with several streams]
+#   FAKE_CLAUDE_DELAY   seconds between two lines  [default: 0]
+#   FAKE_CLAUDE_EXIT    the exit code  [default: 0]
+#   FAKE_TRAIL          if set, a file this appends one JSON line to at start
+#                       and on SIGTERM, holding FAKE_STATE's contents then
+#   FAKE_STATE          the state.json to copy into FAKE_TRAIL
+set -u
+
+record() {  # $1 = event
+  [[ -n "${FAKE_TRAIL:-}" ]] || return 0
+  local state="null"
+  [[ -n "${FAKE_STATE:-}" && -s "$FAKE_STATE" ]] && state="$(cat "$FAKE_STATE")"
+  jq -cn --arg tool claude --arg event "$1" --argjson pid "$$" --argjson state "$state" \
+    '{tool: $tool, event: $event, pid: $pid, state: $state}' >>"$FAKE_TRAIL"
+}
+
+# A stop from the script is a SIGTERM. The sleep below runs in the background
+# and is waited on, so this trap fires at once rather than after the sleep.
+trap 'record term; exit 143' TERM
+
+record start
+
+streams="${FAKE_CLAUDE_STREAM:?FAKE_CLAUDE_STREAM is not set}"
+stream="$streams"
+if [[ "$streams" == *:* ]]; then
+  printf '%s\n' "$$" >>"${FAKE_CLAUDE_CALLS:?FAKE_CLAUDE_CALLS is not set}"
+  IFS=: read -r -a list <<<"$streams"
+  call=$(wc -l <"$FAKE_CLAUDE_CALLS")
+  (( call > ${#list[@]} )) && call=${#list[@]}
+  stream="${list[$(( call - 1 ))]}"
+fi
+
+work="fake-claude-$$.txt"
+printf 'work done by fake claude %s\n' "$$" >"$work"
+
+while IFS= read -r line || [[ -n "$line" ]]; do
+  printf '%s\n' "$line"
+  if [[ "${FAKE_CLAUDE_DELAY:-0}" != 0 ]]; then
+    sleep "$FAKE_CLAUDE_DELAY" & wait $!
+  fi
+done <"$stream"
+
+git add -- "$work" && git commit -q -m "fake claude: $work" >/dev/null
+exit "${FAKE_CLAUDE_EXIT:-0}"
