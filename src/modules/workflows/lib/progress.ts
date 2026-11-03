@@ -254,11 +254,12 @@ export function headerActions(
   const offersNext =
     following !== undefined &&
     (index === progress.current || index === progress.lastPassed);
+  const pending = stage.state === "pending";
   const passed = stage.state === "done" || stage.state === "skipped";
   return {
     next: offersNext ? following.name : null,
     nextEnabled: offersNext && passed,
-    done: stage.gate === "confirm" && !passed,
-    skip: stage.optional && !passed,
+    done: stage.gate === "confirm" && !passed && !pending,
+    skip: stage.optional && !passed && !pending,
   };
 }

@@ -23,8 +23,8 @@ export function StageHeader({
   onDone,
   onSkip,
 }: Props) {
-  const unmatched = stage.produces.filter((p) => !p.includes("*"));
-  const missing = unmatched.filter((p) => !stage.produced.includes(p));
+  const literal = stage.produces.filter((p) => !p.includes("*"));
+  const missing = literal.filter((p) => !stage.produced.includes(p));
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-3 py-1.5 text-xs">
       <span className="font-medium">{stage.name}</span>

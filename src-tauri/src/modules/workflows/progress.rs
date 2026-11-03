@@ -186,7 +186,7 @@ fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
             if depth < MAX_DEPTH && !skip {
                 walk(base, &path, depth + 1, out);
             }
-        } else if kind.is_file() || (kind.is_symlink() && path.is_file()) {
+        } else if kind.is_file() {
             if let Ok(rel) = path.strip_prefix(base) {
                 out.push(rel.to_string_lossy().replace('\\', "/"));
             }

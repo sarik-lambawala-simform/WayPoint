@@ -5,7 +5,7 @@ import { featureTabTitle, headerActions } from "./lib/progress";
 import { StageBar } from "./StageBar";
 import { StageHeader } from "./StageHeader";
 import { useFeatureProgress } from "./useFeatureProgress";
-import { WorkflowPicker } from "./WorkflowPicker";
+import { WorkflowList, WorkflowPicker } from "./WorkflowPicker";
 
 type Props = {
   featureDir: string;
@@ -80,8 +80,15 @@ function LoadedPane({
   if (!state) return null;
   if ("error" in state.resolved) {
     return (
-      <div className="flex flex-col gap-1 whitespace-pre-wrap break-all p-4 text-sm text-destructive">
-        {state.resolved.error}
+      <div className="flex flex-col gap-3 overflow-y-auto p-4 text-sm">
+        <div className="whitespace-pre-wrap break-all text-destructive">
+          {state.resolved.error}
+        </div>
+        <WorkflowList
+          catalog={catalog}
+          selectedId=""
+          onPick={(id) => void record({ kind: "workflow", id })}
+        />
       </div>
     );
   }
@@ -108,9 +115,13 @@ function LoadedPane({
 
   const now = () => new Date().toISOString();
   const markDir = shown?.repoScoped ? repoRoot : featureDir;
-  const mark = (m: "confirmed" | "skipped") =>
-    shown &&
-    record({ kind: "mark", stage: shown.key, mark: m, at: now() }, markDir);
+  const mark = (m: "confirmed" | "skipped") => {
+    setSelected(null);
+    return (
+      shown &&
+      record({ kind: "mark", stage: shown.key, mark: m, at: now() }, markDir)
+    );
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">

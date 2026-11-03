@@ -169,6 +169,7 @@ export function WorkspaceSurface({
         className={cn(LAYER, !isFeatureTab && "invisible pointer-events-none")}
         aria-hidden={!isFeatureTab}
       >
+        {/* fork: feature tab callbacks */}
         <FeatureStack
           tabs={tabs}
           activeId={activeId}

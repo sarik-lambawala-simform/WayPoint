@@ -284,7 +284,14 @@ describe("headerActions", () => {
       input({ repoFiles: ["docs/agents/issue-tracker.md"] }),
     );
     expect(headerActions(grill, 1)).toMatchObject({ done: true, skip: false });
-    expect(headerActions(grill, 2)).toMatchObject({ done: true, skip: true });
-    expect(headerActions(grill, 3)).toMatchObject({ done: false, skip: false });
+    expect(headerActions(grill, 2)).toMatchObject({ done: false, skip: false });
+    const later = computeProgress(
+      input({
+        repoFiles: ["docs/agents/issue-tracker.md"],
+        featureFiles: ["spec.md"],
+      }),
+    );
+    expect(headerActions(later, 2)).toMatchObject({ done: true, skip: true });
+    expect(headerActions(later, 3)).toMatchObject({ done: false, skip: false });
   });
 });
