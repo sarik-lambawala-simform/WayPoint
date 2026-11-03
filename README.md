@@ -96,8 +96,27 @@ WayPoint is built on Terax, a lightweight open-source terminal-first AI-native d
 
 Installers are on the [Releases](https://github.com/sarik-lambawala-simform/WayPoint/releases/latest) page. This build has no update endpoint configured, so new releases are installed by hand. WayPoint installs beside an installed Terax with its own data (identifier `com.simform.workflows`).
 
+Downloads for each platform:
+
+- **macOS:** `.dmg` (separate builds for Apple silicon and Intel).
+- **Windows:** the NSIS `-setup.exe` installer.
+- **Linux:** `.AppImage` or `.deb`.
+
+A new release is a draft until a maintainer publishes it. Builds are not notarized (macOS) or code-signed (Windows), so each OS warns on first launch. Clear the warning once as below.
+
+### macOS notes
+
+macOS builds are ad-hoc signed and not notarized, so Gatekeeper blocks the first launch of a downloaded app. Drag WayPoint into `/Applications`, then clear the quarantine flag:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/WayPoint.app
+```
+
+Then open WayPoint as usual.
+
 ### Windows notes
 
+- **SmartScreen:** the installer is unsigned, so Windows shows "Windows protected your PC". Click **More info**, then **Run anyway**.
 - Default shell detection: `pwsh.exe` (PowerShell 7+) -> `powershell.exe` (Windows PowerShell 5.1) -> `cmd.exe`.
 - WSL is a first-class workspace environment, not a wrapped subprocess.
 
