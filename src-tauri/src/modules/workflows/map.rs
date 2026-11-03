@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::modules::ralph::tickets::{blocker_status_key_of, is_done_key, read_tickets};
+use crate::modules::ralph::tickets::{is_done_key, read_tickets};
 
 const SECTION: &str = "## Not yet specified";
 
@@ -66,10 +66,7 @@ pub fn map_facts(feature_dir: &Path) -> MapFacts {
         .unwrap_or_default()
         .into_iter()
         .filter(|t| t.wayfinder)
-        .filter(|t| {
-            let text = std::fs::read_to_string(&t.path).unwrap_or_default();
-            !is_done_key(&blocker_status_key_of(&text))
-        })
+        .filter(|t| !is_done_key(&t.blocker_status_key))
         .map(|t| {
             t.path
                 .file_name()

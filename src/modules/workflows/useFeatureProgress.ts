@@ -113,9 +113,13 @@ export function useFeatureProgress(
   const record = useCallback(
     async (update: ProgressUpdate, dir: string = featureDir) => {
       try {
-        // Acting on an inferred route writes it first, so the record never falls back to the plain one.
+        // Acting in the feature folder on an inferred route writes it first, so the record never falls back to the plain one.
         const current = stateRef.current;
-        if (current?.routeInferred && update.kind !== "route")
+        if (
+          current?.routeInferred &&
+          update.kind !== "route" &&
+          dir === featureDir
+        )
           await recordProgress(featureDir, {
             kind: "route",
             route: current.route,
