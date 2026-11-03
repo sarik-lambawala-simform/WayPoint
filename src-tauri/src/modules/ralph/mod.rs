@@ -4,5 +4,6 @@
 pub mod keepawake;
 pub mod launch;
 pub mod runs;
+pub mod ticket_read;
 pub mod tickets;
 pub mod watch;

@@ -15,6 +15,7 @@ import {
   startButtonLabel,
 } from "./lib/loopLaunch";
 import { LoopLaunchForm } from "./LoopLaunchForm";
+import { TicketTerminalArea, type TicketTerminalsApi } from "./TicketTerminals";
 import {
   diedNote,
   formatDuration,
@@ -46,9 +47,17 @@ export const RUN_TONE: Record<RunStatus, string> = {
 export function LoopRunView({
   view,
   launch,
+  terminals,
+  feature = "",
+  active = true,
 }: {
   view: View | null;
   launch?: LaunchTarget;
+  /** The ticket terminals; without them the list only lists. */
+  terminals?: TicketTerminalsApi;
+  feature?: string;
+  /** The Loop is on screen, so its shown terminal is visible. */
+  active?: boolean;
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [options, setOptions] = useState(DEFAULT_LAUNCH);
@@ -162,7 +171,7 @@ export function LoopRunView({
           </code>
         )}
       </div>
-      {formOpen && ctx ? (
+      {formOpen && ctx && (
         <LoopLaunchForm
           options={options}
           onChange={setOptions}
@@ -176,52 +185,94 @@ export function LoopRunView({
             setFailure(null);
           }}
         />
-      ) : tickets.length === 0 ? (
-        <div className="p-3 text-xs text-muted-foreground">
-          This feature has no build tickets.
-        </div>
+      )}
+      {tickets.length === 0 ? (
+        !formOpen && (
+          <div className="p-3 text-xs text-muted-foreground">
+            This feature has no build tickets.
+          </div>
+        )
       ) : (
-        <ul className="min-h-0 flex-1 overflow-y-auto" aria-label="Tickets">
-          {tickets.map((t) => {
-            const time = ticketTimeText(t.spent, now);
-            const usd = ticketCostText(t.spent);
-            return (
-              <li
-                key={t.name}
-                className="flex items-center gap-3 border-b border-border/40 px-3 py-1.5 text-xs"
-              >
-                <span className="w-6 shrink-0 tabular-nums text-muted-foreground">
-                  {t.number}
-                </span>
-                <span className="min-w-0 flex-1 truncate" title={t.name}>
-                  {t.title || t.name}
-                </span>
-                <span
-                  className={cn(
-                    "shrink-0 rounded px-1.5 py-px text-[10px] leading-4",
-                    t.running
-                      ? RUN_TONE.live
-                      : "bg-muted text-muted-foreground",
+        // Hidden, not unmounted, behind the form: the ticket terminals keep running.
+        <div className={cn("min-h-0 flex-1", formOpen ? "hidden" : "flex")}>
+          <ul
+            className={cn(
+              "min-h-0 overflow-y-auto",
+              terminals
+                ? "w-[26rem] max-w-[45%] shrink-0 border-r border-border/60"
+                : "flex-1",
+            )}
+            aria-label="Tickets"
+          >
+            {tickets.map((t) => {
+              const time = ticketTimeText(t.spent, now);
+              const usd = ticketCostText(t.spent);
+              const chosen = terminals?.state.selected === t.number;
+              const row = (
+                <>
+                  <span className="w-6 shrink-0 tabular-nums text-muted-foreground">
+                    {t.number}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate" title={t.name}>
+                    {t.title || t.name}
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-px text-[10px] leading-4",
+                      t.running
+                        ? RUN_TONE.live
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {ticketStatusText(t)}
+                  </span>
+                  <span
+                    className="w-16 shrink-0 text-right tabular-nums"
+                    title={time.title ?? undefined}
+                  >
+                    {time.text}
+                  </span>
+                  <span
+                    className="w-16 shrink-0 text-right tabular-nums"
+                    title={usd.title ?? undefined}
+                  >
+                    {usd.text}
+                  </span>
+                </>
+              );
+              return (
+                <li key={t.name} className="border-b border-border/40">
+                  {terminals ? (
+                    <button
+                      type="button"
+                      aria-pressed={chosen}
+                      onClick={() => terminals.select(t.number)}
+                      className={cn(
+                        "flex w-full items-center gap-3 px-3 py-1.5 text-left text-xs hover:bg-muted/50",
+                        chosen && "bg-muted",
+                      )}
+                    >
+                      {row}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-3 px-3 py-1.5 text-xs">
+                      {row}
+                    </div>
                   )}
-                >
-                  {ticketStatusText(t)}
-                </span>
-                <span
-                  className="w-16 shrink-0 text-right tabular-nums"
-                  title={time.title ?? undefined}
-                >
-                  {time.text}
-                </span>
-                <span
-                  className="w-16 shrink-0 text-right tabular-nums"
-                  title={usd.title ?? undefined}
-                >
-                  {usd.text}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+          {terminals && (
+            <TicketTerminalArea
+              api={terminals}
+              tickets={tickets}
+              run={run}
+              feature={feature}
+              active={active}
+            />
+          )}
+        </div>
       )}
     </div>
   );

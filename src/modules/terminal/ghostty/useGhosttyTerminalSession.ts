@@ -99,6 +99,8 @@ type GhosttyStartupTimings = {
 };
 
 const sessions = new Map<number, GhosttySession>();
+// fork: leaves that only show text our module writes into the model; they never open a PTY.
+const displayLeaves = new Set<number>();
 const textEncoder = new TextEncoder();
 const oscClipboard = new LatestClipboardWrite(writeTerminalClipboard);
 
@@ -279,6 +281,31 @@ export function useGhosttyTerminalSession({
   );
 }
 
+// fork: a display leaf shows output that is written into its model and has no shell behind it.
+// Mark it before its pane mounts.
+export function markGhosttyDisplayLeaf(leafId: number): void {
+  displayLeaves.add(leafId);
+}
+
+// fork: resolves true once a display leaf's model is up.
+export async function whenGhosttyDisplayReady(
+  leafId: number,
+): Promise<boolean> {
+  const session = sessions.get(leafId);
+  if (!session) return false;
+  await session.initializing;
+  return !!session.model && !session.startupError && !session.disposed;
+}
+
+// fork: writes terminal output (not input) straight into a leaf's model.
+export function displayInGhosttySession(leafId: number, text: string): boolean {
+  const session = sessions.get(leafId);
+  if (!session?.model || session.disposed) return false;
+  session.model.write(textEncoder.encode(text));
+  ghosttyBlocks(leafId)?.changed();
+  return true;
+}
+
 export function hasGhosttySession(leafId: number): boolean {
   return sessions.has(leafId);
 }
@@ -408,6 +435,7 @@ export function disposeGhosttySession(leafId: number): boolean {
   void session.pty?.close();
   session.pty = null;
   sessions.delete(leafId);
+  displayLeaves.delete(leafId); // fork
   return true;
 }
 
@@ -794,6 +822,11 @@ async function initializeSessionGeneration(
   }
   session.callbacks.onSearchReady?.(surface.searchController());
 
+  // fork: a display leaf has no shell.
+  if (displayLeaves.has(session.leafId)) {
+    mark("ptyReadyMs");
+    return;
+  }
   const startCols = model.cols;
   const startRows = model.rows;
   const pty = await openPty(
@@ -857,6 +890,7 @@ function createGhosttyInput(
     }),
     gridShiftY: () => surface.gridShiftY(),
     onData: (bytes) => {
+      if (displayLeaves.has(session.leafId)) return; // fork
       if (
         ghosttyBlocks(session.leafId)?.getMode() === "prompt" &&
         !(bytes.length === 1 && bytes[0] === 3)

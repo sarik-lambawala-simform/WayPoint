@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { IS_WINDOWS } from "@/lib/platform";
 import type { WorkspaceEnv } from "@/modules/workspace";
 import { LoopRunView } from "./LoopRunView";
+import { useTicketTerminals } from "./TicketTerminals";
 import { RoutePicker } from "./RoutePicker";
 import { StageBar } from "./StageBar";
 import { StageHeader } from "./StageHeader";
@@ -161,6 +162,8 @@ function LoadedPane({
     resolvedEntry?.workflow.stages.some((s) => s.run === "loop"),
   );
   const loopRun = useLoopRun(repoRoot, featureDir, feature, hasLoop);
+  const ticketTerminals = useTicketTerminals(repoRoot);
+  const [loopSeen, setLoopSeen] = useState(false);
   const forkStages: ForkStage[] = (resolvedEntry?.workflow.stages ?? []).map(
     (s) => ({
       key: s.name,
@@ -404,6 +407,8 @@ function LoadedPane({
     entryOfShown && entryOfShown.status !== "running" && input !== null,
   );
   const loopShown = stageDef.run === "loop";
+  // Once the Loop has been shown its ticket terminals stay mounted behind the other stages.
+  if (loopShown && !loopSeen) setLoopSeen(true);
   const terminalShown = Boolean(entryOfShown && entryOfShown.leaf !== null);
   const failedHere = Boolean(failed && shown && failed.key === shown.key);
   const notStartedNote = entryOfShown
@@ -513,10 +518,20 @@ function LoadedPane({
             bar={endedBar}
           />
         </div>
-        {loopShown && (
-          <div className="absolute inset-0 z-10 bg-background">
+        {(loopShown || loopSeen) && (
+          <div
+            className={
+              loopShown
+                ? "absolute inset-0 z-10 bg-background"
+                : "pointer-events-none invisible absolute inset-0 z-0"
+            }
+            aria-hidden={!loopShown}
+          >
             <LoopRunView
               view={loopRun}
+              terminals={ticketTerminals}
+              feature={feature}
+              active={active && loopShown}
               launch={{
                 repoRoot,
                 featureDir,

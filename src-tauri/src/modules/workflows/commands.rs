@@ -9,6 +9,7 @@ use crate::modules::ralph::launch;
 use crate::modules::ralph::runs::{
     live_runs, read_loop_view, script_alive, Env, LiveRun, LoopView,
 };
+use crate::modules::ralph::ticket_read::{read_ticket, TicketRead};
 use crate::modules::ralph::tickets::read_tickets;
 use crate::modules::ralph::watch::{unwatch, watch_loop};
 
@@ -257,6 +258,27 @@ pub fn workflows_loop_watch(
     Ok(watch_loop(repo, dir, feature, move |view| {
         on_view.send(view).is_ok()
     }))
+}
+
+/// What a ticket's terminal replays from a run folder, from `offset` on.
+#[tauri::command]
+pub async fn workflows_ticket_read(
+    repo_root: String,
+    run_id: String,
+    feature: String,
+    number: String,
+    offset: u64,
+) -> Option<TicketRead> {
+    tokio::task::spawn_blocking(move || {
+        let repo = PathBuf::from(repo_root);
+        if !repo.is_absolute() {
+            return None;
+        }
+        Some(read_ticket(&repo, &run_id, &feature, &number, offset))
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 #[tauri::command]

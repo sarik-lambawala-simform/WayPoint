@@ -275,6 +275,10 @@ pub struct TicketRow {
     pub status: String,
     pub human: bool,
     pub running: bool,
+    /// Blocker numbers in the order the ticket names them.
+    pub blockers: Vec<String>,
+    /// True when every blocker has a ticket file and a done status.
+    pub blockers_met: bool,
     pub spent: Spent,
 }
 
@@ -541,6 +545,8 @@ pub fn read_loop_view(
             title: t.title,
             status: t.status_key,
             human: t.human,
+            blockers: t.blockers,
+            blockers_met: t.blockers_met,
         })
         .collect();
     LoopView {

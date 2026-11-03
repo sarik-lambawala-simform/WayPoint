@@ -42,6 +42,9 @@ export type TicketRow = {
   status: string;
   human: boolean;
   running: boolean;
+  /** Blocker numbers, in the order the ticket names them. */
+  blockers: string[];
+  blockers_met: boolean;
   spent: Spent;
 };
 

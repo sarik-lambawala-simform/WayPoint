@@ -359,6 +359,7 @@ pub fn run() {
             workflows::commands::workflows_loop_start, // fork
             workflows::commands::workflows_loop_watch, // fork
             workflows::commands::workflows_loop_unwatch, // fork
+            workflows::commands::workflows_ticket_read, // fork
             workspace::workspace_current_dir,
             control::control_frontend_ready,
             control::control_respond,

@@ -135,6 +135,8 @@ describe("the ticket list", () => {
       status: "ready-for-agent",
       human: false,
       running: false,
+      blockers: [],
+      blockers_met: true,
       spent: spent(),
       ...over,
     });

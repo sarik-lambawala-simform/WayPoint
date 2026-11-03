@@ -4,6 +4,7 @@ import type { Workflow } from "./lib/api";
 import type { LoopRunView as View, RunView, TicketRow } from "./lib/loopRun";
 import { type LaunchTarget, LoopRunView } from "./LoopRunView";
 import { StageBar } from "./StageBar";
+import type { TicketTerminalsApi } from "./TicketTerminals";
 
 const run = (over: Partial<RunView> = {}): RunView => ({
   id: "ralph-tickets-20261103-143625",
@@ -31,6 +32,8 @@ const ticket = (over: Partial<TicketRow> = {}): TicketRow => ({
   status: "completed",
   human: false,
   running: false,
+  blockers: [],
+  blockers_met: true,
   spent: {
     seconds: 65,
     seconds_partial: null,
@@ -188,6 +191,36 @@ describe("the Loop cell's chip", () => {
         target(),
       );
       expect(html).toContain("setsid ralph/run-ralph-tickets.sh -y");
+    });
+  });
+
+  describe("ticket terminals", () => {
+    const api = (selected: string | null = null): TicketTerminalsApi => ({
+      state: { selected, opened: {} },
+      select: () => {},
+      openShell: () => {},
+      showRun: () => {},
+      onShellExit: () => {},
+      repoRoot: "/r",
+    });
+    const withTerminals = (selected: string | null) =>
+      renderToStaticMarkup(
+        <LoopRunView
+          view={{ run: run(), tickets: [ticket(), ticket({ number: "02" })] }}
+          terminals={api(selected)}
+          feature="f"
+        />,
+      );
+
+    it("makes every ticket row a button and asks for a choice before one is made", () => {
+      const html = withTerminals(null);
+      expect(html.match(/<button[^>]*aria-pressed="false"/g)).toHaveLength(2);
+      expect(html).toContain("Choose a ticket to see its terminal.");
+    });
+
+    it("marks the chosen ticket", () => {
+      const html = withTerminals("02");
+      expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
     });
   });
 });

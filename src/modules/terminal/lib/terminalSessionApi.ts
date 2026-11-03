@@ -1,6 +1,9 @@
 import type { BlockMode } from "@/modules/terminal/block/lib/modeMachine";
 import {
   clearGhosttySession,
+  displayInGhosttySession, // fork
+  markGhosttyDisplayLeaf, // fork
+  whenGhosttyDisplayReady, // fork
   disposeGhosttySession,
   focusGhosttySession,
   ghosttyFocusedLeaf,
@@ -182,4 +185,17 @@ async function withTimeout(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+// fork: display leaves show text the workflows module writes; no shell runs behind them.
+export function markDisplayLeaf(leafId: number): void {
+  markGhosttyDisplayLeaf(leafId);
+}
+
+export function whenDisplayReady(leafId: number): Promise<boolean> {
+  return whenGhosttyDisplayReady(leafId);
+}
+
+export function displayInSession(leafId: number, text: string): boolean {
+  return displayInGhosttySession(leafId, text);
 }

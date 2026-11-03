@@ -120,3 +120,18 @@ new markdown tab (`MarkdownLink`, `MarkdownStack`, `WorkspaceSurface`, `App`, he
 The Loop's "Start the loop" opens `LoopLaunchForm` in the Loop pane: the script's flags in the Ralph UI's groups (what to run, branch, model and quota, failures and network), the exact line under it. `lib/loopLaunch.ts` builds the arguments and the line (`launchArgs`, `launchLine`, tested against expected strings); the app always passes `-y`, `--issues-dir <feature folder>` and `--run-dir logs/ralph-tickets-<stamp>`, and leaves a flag out when it holds the script's default. The same arguments go to `workflows_loop_start` (`ralph/launch.rs`), which refuses while the repo has a live run, writes the line to `<run dir>/launch-line` (the header shows it, also after a reopen) and spawns `ralph/run-ralph-tickets.sh` in the repo root in its own session (`setsid` in `pre_exec`, no `setsid` binary needed on macOS), with `TERAX_TERMINAL` removed and no pane involved. `workflows_loop_live` lists the repo's live runs; while any is live "Start the loop" is disabled and names its feature. A died run shows "Start the loop again".
 
 Keep-awake (`ralph/keepawake.rs`, Linux): each loop watch reports whether its run is live; the first live report takes a `systemd-inhibit --what=idle:sleep ... sleep infinity` child (parent-death signal, so a killed app leaves no lock) and the last release drops it. This is a deviation from the spec's `keepawake` crate: no new dependency, so `Cargo.lock` is unchanged. The form's sleep line reads "held by the app" on Linux; on macOS it is the script's `caffeinate` checkbox. Windows launch belongs to the WSL ticket and returns an error for now.
+
+## Ticket terminals
+
+The Loop's ticket list opens a terminal beside it for the chosen ticket (`TicketTerminals.tsx`, state in `lib/ticketTerminals.ts`,
+text in `lib/ticketTerminal.ts`). A ticket's terminal is made when it is first chosen and stays mounted (the Loop layer in
+`FeaturePane` stays mounted behind other stages once shown). It is a *display leaf*: `markGhosttyDisplayLeaf`,
+`whenGhosttyDisplayReady` and `displayInGhosttySession` in `useGhosttyTerminalSession.ts` (marked `// fork:`, re-exported through
+`terminalSessionApi.ts` and the terminal `index.ts`) let a leaf skip `openPty` and ignore input, and let our module write output into
+its model. No shell runs behind it and nothing is hosted: `workflows_ticket_read` (`ralph/ticket_read.rs`) returns a ticket's
+`ticket-NN.prompt.txt`, the new complete lines of `ticket-NN.jsonl` from an offset, and its last `tickets.tsv` row, and the page
+renders them (waiting / blocked by X, the `claude` line, events, the result). It reads from offset 0 on a reopen and polls once a
+second only while the ticket is the live run's running one. "Open a shell" adds a normal `TerminalPane` in the repo root to that
+ticket's area; the app never types into it. Leaf ids start at 2^30, so Terax's tab saving never sees them. The `claude` line is the
+script's fixed flags, the `--model` from the launch line when there is one, and the prompt from the prompt file.
+
