@@ -7,7 +7,14 @@ import {
   runCheck,
 } from "./lib/api";
 import { joinPath } from "./lib/featurePaths";
-import { featureTabTitle, headerActions } from "./lib/progress";
+import {
+  featureTabTitle,
+  hasRouteOverride,
+  headerActions,
+  PLAIN_ROUTE,
+  routesOf,
+} from "./lib/progress";
+import { RoutePicker } from "./RoutePicker";
 import { StageBar } from "./StageBar";
 import { StageHeader } from "./StageHeader";
 import { useFeatureProgress } from "./useFeatureProgress";
@@ -124,6 +131,9 @@ function LoadedPane({
         : []),
   ];
 
+  const routes = routesOf(workflow);
+  const pickRoute = (route: string | null) =>
+    void record({ kind: "route", route: route ?? PLAIN_ROUTE });
   const now = () => new Date().toISOString();
   const markDir = shown?.repoScoped ? repoRoot : featureDir;
   const mark = (m: "confirmed" | "skipped") => {
@@ -195,6 +205,9 @@ function LoadedPane({
         selected={index}
         onSelect={setSelected}
         progress={progress}
+        routePicker={
+          <RoutePicker routes={routes} route={state.route} onPick={pickRoute} />
+        }
         picker={
           <WorkflowPicker
             title={workflow.title}
@@ -233,8 +246,15 @@ function LoadedPane({
       {failed && shown && failed.key === shown.key ? (
         <CheckOutput result={failed.result} />
       ) : (
-        <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
           {shown ? `${shown.name} has not started yet.` : null}
+          {hasRouteOverride(workflow.stages[index]) && (
+            <RoutePicker
+              routes={routes}
+              route={state.route}
+              onPick={pickRoute}
+            />
+          )}
         </div>
       )}
     </div>

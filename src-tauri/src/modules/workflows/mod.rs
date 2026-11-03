@@ -4,5 +4,6 @@
 pub mod catalog;
 pub mod check;
 pub mod commands;
+pub mod map;
 pub mod progress;
 pub mod workflow;

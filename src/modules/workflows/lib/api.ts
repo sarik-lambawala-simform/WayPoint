@@ -2,7 +2,7 @@ import { native } from "@/modules/ai/lib/native";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { featureDirOf, scratchDir } from "./featurePaths";
-import type { ProgressFile } from "./progress";
+import type { MapFacts, ProgressFile } from "./progress";
 
 export type DoneWhen = "confirm" | "tickets" | "map" | { check: string };
 
@@ -140,3 +140,7 @@ export const runCheck = (
     workflowDir,
     command,
   });
+
+/** What the `map` gate looks at: `map.md`, the open wayfinder tickets and Not yet specified. */
+export const mapFacts = (featureDir: string) =>
+  invoke<MapFacts>("workflows_map_facts", { featureDir });

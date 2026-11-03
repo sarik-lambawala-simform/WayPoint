@@ -3,6 +3,7 @@ import {
   buildTickets,
   type Catalog,
   listFiles,
+  mapFacts,
   type ProgressRead,
   type ProgressUpdate,
   readProgress,
@@ -10,6 +11,7 @@ import {
 } from "./lib/api";
 import { joinPath } from "./lib/featurePaths";
 import {
+  chosenRoute,
   computeProgress,
   type Progress,
   type ProgressFile,
@@ -23,6 +25,8 @@ export type FeatureState = {
   resolved: Resolved;
   progress: Progress | null;
   route: string | null;
+  /** True when the route was inferred from a `map.md` and is not in progress.yaml. */
+  routeInferred: boolean;
   /** Files that could not be read: a progress.yaml that does not load. */
   problems: string[];
 };
@@ -44,6 +48,8 @@ export function useFeatureProgress(
   const catalogRef = useRef(catalog);
   catalogRef.current = catalog;
   const seq = useRef(0);
+  const stateRef = useRef<FeatureState | null>(null);
+  stateRef.current = state;
 
   const refresh = useCallback(async () => {
     const mine = ++seq.current;
@@ -57,20 +63,28 @@ export function useFeatureProgress(
       joinPath(featureDir, PROGRESS_FILE),
     );
     let progress: Progress | null = null;
-    const route = feature.file?.route ?? null;
+    let route: string | null = feature.file?.route ?? null;
+    let routeInferred = false;
     if ("entry" in resolved) {
       const workflow = resolved.entry.workflow;
-      const [featureFiles, repoFiles, tickets] = await Promise.all([
+      const [featureFiles, repoFiles, tickets, facts] = await Promise.all([
         listFiles(featureDir, [""]),
         listFiles(repoRoot, repoListDirs(workflow)),
         buildTickets(featureDir),
+        mapFacts(featureDir),
       ]);
+      ({ route, inferred: routeInferred } = chosenRoute(
+        workflow,
+        feature.file?.route,
+        featureFiles,
+      ));
       progress = computeProgress({
         workflow,
         route,
         featureFiles,
         repoFiles,
         buildTickets: tickets,
+        mapFacts: facts,
         repoProgress: repo.file,
         featureProgress: feature.file,
       });
@@ -80,6 +94,7 @@ export function useFeatureProgress(
       resolved,
       progress,
       route,
+      routeInferred,
       problems: [problemOf(feature), problemOf(repo)].filter(
         (p): p is string => p !== null,
       ),
@@ -98,6 +113,13 @@ export function useFeatureProgress(
   const record = useCallback(
     async (update: ProgressUpdate, dir: string = featureDir) => {
       try {
+        // Acting on an inferred route writes it first, so the record never falls back to the plain one.
+        const current = stateRef.current;
+        if (current?.routeInferred && update.kind !== "route")
+          await recordProgress(featureDir, {
+            kind: "route",
+            route: current.route,
+          });
         await recordProgress(dir, update);
       } catch (e) {
         console.error("could not record the progress", e);

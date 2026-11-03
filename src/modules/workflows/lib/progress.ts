@@ -61,6 +61,16 @@ export type Progress = {
   done: boolean;
 };
 
+/** What the `map` gate looks at, from `workflows_map_facts`. */
+export type MapFacts = {
+  /** `map.md` exists in the feature folder. */
+  exists: boolean;
+  /** Wayfinder tickets in `issues/` that are not completed, resolved or done. */
+  open_wayfinder: string[];
+  /** `## Not yet specified` holds nothing but comments. */
+  unspecified_clear: boolean;
+};
+
 export type ProgressInput = {
   workflow: Workflow;
   route: string | null;
@@ -72,7 +82,57 @@ export type ProgressInput = {
   featureProgress: ProgressFile | null;
   /** Names of the build tickets in `issues/`, by the Rust reader's rule (`workflows_build_tickets`). */
   buildTickets?: string[];
+  /** For the `map` gate; without it that gate does not pass. */
+  mapFacts?: MapFacts;
 };
+
+/** The route a workflow's stages override on, in first-seen order. */
+export function routesOf(workflow: Workflow): string[] {
+  const names = new Set<string>();
+  for (const stage of workflow.stages)
+    for (const r of Object.keys(stage.routes ?? {})) names.add(r);
+  return [...names];
+}
+
+/** True for a stage that has an override on at least one route. */
+export const hasRouteOverride = (stage: Stage) =>
+  Object.keys(stage.routes ?? {}).length > 0;
+
+/** The route name `progress.yaml` holds for a deliberate pick of the plain route. */
+export const PLAIN_ROUTE = "";
+
+/**
+ * The route in force. A recorded route wins (the empty one is the plain route). With none
+ * recorded and a `map.md` in the folder, the Wayfinder route is inferred, when the workflow has
+ * one; `inferred` says it was not written.
+ */
+export function chosenRoute(
+  workflow: Workflow,
+  recorded: string | null | undefined,
+  featureFiles: string[],
+): { route: string | null; inferred: boolean } {
+  if (recorded !== null && recorded !== undefined)
+    return {
+      route: recorded === PLAIN_ROUTE ? null : recorded,
+      inferred: false,
+    };
+  if (
+    featureFiles.includes("map.md") &&
+    routesOf(workflow).includes("wayfinder")
+  )
+    return { route: "wayfinder", inferred: true };
+  return { route: null, inferred: false };
+}
+
+/** The `map` gate: `map.md` exists, no wayfinder ticket is open, nothing under Not yet specified. */
+export function mapCleared(facts: MapFacts | undefined): boolean {
+  return Boolean(
+    facts &&
+      facts.exists &&
+      facts.open_wayfinder.length === 0 &&
+      facts.unspecified_clear,
+  );
+}
 
 /** A stage with the chosen route's overrides applied. */
 export function effectiveStage(stage: Stage, route: string | null): Stage {
@@ -115,8 +175,7 @@ export function matchProduces(entry: string, files: string[]): string[] {
 }
 
 /**
- * `map` still falls back to the stage's `produces`, and a stage with no gate and no `produces`
- * stays unmet.
+ * A stage with no gate and no `produces` stays unmet.
  */
 function gateKind(stage: Stage): GateKind {
   const w = stage.done_when;
@@ -144,7 +203,8 @@ function evaluate(stage: Stage & { key: string }, input: ProgressInput) {
   else if (kind === "check") gatePasses = Boolean(marks["check passed"]);
   else if (kind === "tickets")
     gatePasses = (input.buildTickets ?? []).length > 0;
-  else if (kind === "produces" || kind === "map") gatePasses = everyMatches;
+  else if (kind === "map") gatePasses = mapCleared(input.mapFacts);
+  else if (kind === "produces") gatePasses = everyMatches;
 
   const skipped = stage.optional && Boolean(marks.skipped) && !gatePasses;
   return {

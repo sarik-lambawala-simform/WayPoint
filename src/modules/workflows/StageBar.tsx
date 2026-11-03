@@ -11,6 +11,8 @@ type Props = {
   onSelect: (index: number) => void;
   /** Replaces the plain workflow title, e.g. with the workflow picker. */
   picker?: ReactNode;
+  /** The route picker, under the workflow picker. */
+  routePicker?: ReactNode;
   /** Each stage's state, shown as a chip on its cell. */
   progress?: Progress | null;
 };
@@ -22,6 +24,7 @@ export function StageBar({
   selected,
   onSelect,
   picker,
+  routePicker,
   progress,
 }: Props) {
   return (
@@ -34,6 +37,7 @@ export function StageBar({
         {picker ?? (
           <span className="truncate text-xs font-medium">{workflow.title}</span>
         )}
+        {routePicker}
         <span
           className="truncate text-[11px] text-muted-foreground"
           title={featureDir}

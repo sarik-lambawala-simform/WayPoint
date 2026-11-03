@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use super::catalog::{build_catalog, user_workflows_dir, Catalog};
 use super::check::{run_check, CheckResult};
+use super::map::{map_facts, MapFacts};
 use super::progress::{self, ProgressFile, ProgressRead, Update};
 use super::workflow::{shipped_workflow, Vars, Workflow};
 use crate::modules::ralph::tickets::read_tickets;
@@ -101,6 +102,20 @@ pub async fn workflows_build_tickets(feature_dir: String) -> Vec<String> {
             return Vec::new();
         }
         build_tickets(&dir.join("issues"))
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// What the `map` gate looks at in a feature folder.
+#[tauri::command]
+pub async fn workflows_map_facts(feature_dir: String) -> MapFacts {
+    tokio::task::spawn_blocking(move || {
+        let dir = PathBuf::from(feature_dir);
+        if !dir.is_absolute() {
+            return MapFacts::default();
+        }
+        map_facts(&dir)
     })
     .await
     .unwrap_or_default()

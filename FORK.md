@@ -38,7 +38,9 @@ and the wiring in `src/app/App.tsx` and `src-tauri/src/lib.rs` (dialog plugin, `
 Progress: `modules/workflows/progress.rs` reads and writes `progress.yaml` (workflow, route, confirm and skip marks) and lists
 files for the gates (`workflows_read_progress`, `workflows_record_progress`, `workflows_list_files`); the model is the pure
 `lib/progress.ts`. `check.rs` runs a `check` gate's command (`workflows_run_check`, only from Next and Recheck) and
-`workflows_build_tickets` feeds the `tickets` gate from the Rust ticket reader. `WorkspaceSurface.tsx` and `App.tsx` pass the feature tab a title setter and an open-file handler.
+`workflows_build_tickets` feeds the `tickets` gate from the Rust ticket reader, and `map.rs` (`workflows_map_facts`) feeds the `map` gate
+(`map.md`, open wayfinder tickets, `## Not yet specified`). A route is written to `progress.yaml` when picked (`route: ''` is a deliberate pick of the plain route);
+with none written and a `map.md` in the folder, Wayfinder is inferred and written along with the user's first record. `WorkspaceSurface.tsx` and `App.tsx` pass the feature tab a title setter and an open-file handler.
 
 ## `.github/workflows/release.yml`
 

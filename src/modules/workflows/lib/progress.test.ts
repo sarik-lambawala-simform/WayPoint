@@ -2,13 +2,17 @@ import { describe, expect, it } from "vitest";
 import type { Stage, Workflow } from "./api";
 import {
   ageOf,
+  chosenRoute,
   computeProgress,
   featureTabTitle,
+  hasRouteOverride,
   headerActions,
+  type MapFacts,
   matchProduces,
   type ProgressFile,
   type ProgressInput,
   repoListDirs,
+  routesOf,
 } from "./progress";
 
 const stage = (name: string, extra: Partial<Stage> = {}): Stage => ({
@@ -37,7 +41,10 @@ const mattPocock: Workflow = {
       },
     }),
     stage("Prototype", { optional: true, done_when: "confirm" }),
-    stage("Spec", { produces: ["spec.md"] }),
+    stage("Spec", {
+      produces: ["spec.md"],
+      routes: { wayfinder: { session: "fresh", args: "{{ feature }}/map.md" } },
+    }),
     stage("Tickets", { produces: ["issues/*.md"], done_when: "tickets" }),
     stage("Loop", { run: "loop" }),
     stage("Retro", { optional: true, done_when: "confirm" }),
@@ -53,6 +60,12 @@ const input = (over: Partial<ProgressInput> = {}): ProgressInput => ({
   featureProgress: null,
   ...over,
 });
+
+const cleared: MapFacts = {
+  exists: true,
+  open_wayfinder: [],
+  unspecified_clear: true,
+};
 
 const mark = (stages: ProgressFile["stages"]): ProgressFile => ({ stages });
 const at = "2026-11-03T10:00:00Z";
@@ -180,6 +193,7 @@ describe("computeProgress", () => {
       route: "wayfinder",
       repoFiles: ["docs/agents/issue-tracker.md"],
       featureFiles: ["map.md"],
+      mapFacts: cleared,
     });
     const p = computeProgress(i);
     expect(p.stages[1].name).toBe("Wayfinder");
@@ -414,5 +428,117 @@ describe("ageOf", () => {
     expect(ageOf("2026-11-03T11:55:00Z", now)).toBe("5 min ago");
     expect(ageOf("2026-11-03T09:00:00Z", now)).toBe("3 h ago");
     expect(ageOf("2026-11-01T12:00:00Z", now)).toBe("2 d ago");
+  });
+});
+
+describe("routes", () => {
+  it("lists the workflow's routes and which stages override", () => {
+    expect(routesOf(mattPocock)).toEqual(["wayfinder"]);
+    expect(routesOf({ ...mattPocock, stages: [stage("A")] })).toEqual([]);
+    expect(mattPocock.stages.map(hasRouteOverride)).toEqual([
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("runs stages without an override unchanged on a route", () => {
+    const plain = computeProgress(input()).stages;
+    const way = computeProgress(input({ route: "wayfinder" })).stages;
+    for (const i of [0, 2, 4, 5, 6]) {
+      expect(way[i].name).toBe(plain[i].name);
+      expect(way[i].gate).toBe(plain[i].gate);
+      expect(way[i].produces).toEqual(plain[i].produces);
+    }
+    expect(way[1].name).toBe("Wayfinder");
+    expect(plain[1].name).toBe("Grill");
+  });
+
+  it("ignores a route the workflow does not have", () => {
+    const p = computeProgress(input({ route: "nope" }));
+    expect(p.stages[1].name).toBe("Grill");
+  });
+
+  it("uses the recorded route, and the empty one as the plain route", () => {
+    expect(chosenRoute(mattPocock, "wayfinder", [])).toEqual({
+      route: "wayfinder",
+      inferred: false,
+    });
+    expect(chosenRoute(mattPocock, "", ["map.md"])).toEqual({
+      route: null,
+      inferred: false,
+    });
+  });
+
+  it("infers the Wayfinder route from a map.md when nothing is recorded", () => {
+    expect(chosenRoute(mattPocock, null, ["map.md", "issues/01.md"])).toEqual({
+      route: "wayfinder",
+      inferred: true,
+    });
+    expect(chosenRoute(mattPocock, undefined, ["map.md"]).inferred).toBe(true);
+    expect(chosenRoute(mattPocock, null, ["spec.md"])).toEqual({
+      route: null,
+      inferred: false,
+    });
+    expect(
+      chosenRoute({ ...mattPocock, stages: [stage("A")] }, null, ["map.md"]),
+    ).toEqual({ route: null, inferred: false });
+  });
+});
+
+describe("the map gate", () => {
+  const way = (
+    facts: MapFacts | undefined,
+    extra: Partial<ProgressInput> = {},
+  ) =>
+    computeProgress(
+      input({
+        route: "wayfinder",
+        repoFiles: ["docs/agents/issue-tracker.md"],
+        featureFiles: ["map.md"],
+        mapFacts: facts,
+        ...extra,
+      }),
+    ).stages[1];
+
+  it("passes when the map exists, no wayfinder ticket is open and nothing is unspecified", () => {
+    expect(way(cleared).gatePasses).toBe(true);
+    expect(way(cleared).state).toBe("done");
+  });
+
+  it("fails on an open wayfinder ticket", () => {
+    const s = way({ ...cleared, open_wayfinder: ["02-b.md"] });
+    expect(s.gatePasses).toBe(false);
+    expect(s.state).toBe("current");
+  });
+
+  it("fails while Not yet specified holds something", () => {
+    expect(way({ ...cleared, unspecified_clear: false }).gatePasses).toBe(
+      false,
+    );
+  });
+
+  it("fails without a map.md or without facts, even with map.md listed", () => {
+    expect(way({ ...cleared, exists: false }).gatePasses).toBe(false);
+    expect(way(undefined).gatePasses).toBe(false);
+  });
+
+  it("lets Spec pass on arrival when the map's last ticket wrote spec.md", () => {
+    const p = computeProgress(
+      input({
+        route: "wayfinder",
+        repoFiles: ["docs/agents/issue-tracker.md"],
+        featureFiles: ["map.md", "spec.md"],
+        mapFacts: cleared,
+      }),
+    );
+    expect(p.stages[1].state).toBe("done");
+    expect(p.stages[3].state).toBe("done");
+    expect(p.stages[4].state).toBe("current");
+    expect(p.current).toBe(4);
   });
 });
