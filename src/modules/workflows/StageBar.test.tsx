@@ -70,4 +70,24 @@ describe("StageBar", () => {
     expect(withProgress).toContain(">done<");
     expect(withProgress).toContain(">current<");
   });
+
+  it("shows a live dot only on the stage whose claude is running", () => {
+    const live = renderToStaticMarkup(
+      <StageBar
+        workflow={workflow}
+        featureDir="/r/.scratch/login"
+        selected={1}
+        onSelect={() => {}}
+        live={{ Grill: true }}
+      />,
+    );
+    expect(live.match(/aria-label="claude is running"/g)).toHaveLength(1);
+    expect(live.indexOf("claude is running")).toBeGreaterThan(
+      live.indexOf(">Grill<"),
+    );
+    expect(live.indexOf("claude is running")).toBeLessThan(
+      live.indexOf(">Loop<"),
+    );
+    expect(html).not.toContain("claude is running");
+  });
 });

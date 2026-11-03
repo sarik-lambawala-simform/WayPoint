@@ -304,14 +304,18 @@ export function repoListDirs(workflow: Workflow): string[] {
   return [...dirs];
 }
 
-/** The title of a feature tab: `<feature> · <current stage>`, or just the feature once done. */
+/** The title of a feature tab: `<feature> · <current stage>`, or just the feature once done; a dot while a claude in it runs. */
 export function featureTabTitle(
   feature: string,
   progress: Progress | null,
+  live = false,
 ): string {
-  if (!progress) return feature;
-  if (progress.current === null) return `${feature} · done`;
-  return `${feature} · ${progress.stages[progress.current].name}`;
+  const base = !progress
+    ? feature
+    : progress.current === null
+      ? `${feature} · done`
+      : `${feature} · ${progress.stages[progress.current].name}`;
+  return live ? `${base} ●` : base;
 }
 
 /** What the stage header offers for the stage at `index`. */

@@ -15,6 +15,8 @@ type Props = {
   routePicker?: ReactNode;
   /** Each stage's state, shown as a chip on its cell. */
   progress?: Progress | null;
+  /** Stage keys that have a claude running in their terminal. */
+  live?: Record<string, boolean>;
 };
 
 /** Workflow name and feature path first, then one cell per stage in workflow order. */
@@ -26,6 +28,7 @@ export function StageBar({
   picker,
   routePicker,
   progress,
+  live,
 }: Props) {
   return (
     <div
@@ -61,6 +64,14 @@ export function StageBar({
         >
           <span className="tabular-nums text-[11px] opacity-60">{i + 1}</span>
           <span>{progress?.stages[i]?.name ?? stage.name}</span>
+          {live?.[stage.name] && (
+            <span
+              role="img"
+              aria-label="claude is running"
+              title="claude is running"
+              className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+            />
+          )}
           {progress?.stages[i] && (
             <StageChips
               state={progress.stages[i].state}

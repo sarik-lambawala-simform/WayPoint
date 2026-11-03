@@ -42,6 +42,16 @@ files for the gates (`workflows_read_progress`, `workflows_record_progress`, `wo
 (`map.md`, open wayfinder tickets, `## Not yet specified`). A route is written to `progress.yaml` when picked (`route: ''` is a deliberate pick of the plain route);
 with none written and a `map.md` in the folder, Wayfinder is inferred and written along with the user's first record. `WorkspaceSurface.tsx` and `App.tsx` pass the feature tab a title setter and an open-file handler.
 
+## Stage terminals
+
+`modules/workflows` hosts one terminal per started stage inside the feature tab (`StageTerminalHost`, `useStageTerminals`), built on the
+launcher pattern: `TerminalPane` in the repo root, `whenSessionReady`, then `writeToSession(line + "\r")`. The command lines and the
+typed text are the pure `lib/stageCommand.ts`; the terminal model and the session-id store (`waypoint-stage-sessions.json` in the app
+data folder, keyed by feature folder and stage) are `lib/stageTerminals.ts`. Stage terminals are not tabs, so Terax's tab saving never
+sees them; their leaf ids start at 2^30 so they cannot collide with a tab's. Each stack of stage panes carries its own
+`data-terminal-stack` / `data-terminal-area`, so the WebGPU renderer gives it a canvas. The live dot is a `●` in the feature tab's title
+and a dot on the stage cell, from `useAgentActivityStore`; no upstream file changed for it.
+
 ## `.github/workflows/release.yml`
 
 - `create-release` makes the draft release and reads the upstream tag from the "based on release tag" line at the top of this file, so keep that sentence's wording.

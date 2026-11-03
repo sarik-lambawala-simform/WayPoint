@@ -135,7 +135,7 @@ export function useFeatureProgress(
     [featureDir, refresh],
   );
 
-  return { state, record };
+  return { state, record, refresh };
 }
 
 export type { ProgressFile };

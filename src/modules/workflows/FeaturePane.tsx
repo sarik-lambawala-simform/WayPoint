@@ -8,22 +8,30 @@ import {
 } from "./lib/api";
 import { joinPath } from "./lib/featurePaths";
 import {
+  effectiveStage,
   featureTabTitle,
   hasRouteOverride,
   headerActions,
   PLAIN_ROUTE,
   routesOf,
+  type StageProgress,
 } from "./lib/progress";
+import { featureRel, stageInput } from "./lib/stageCommand";
+import { Button } from "@/components/ui/button";
 import { RoutePicker } from "./RoutePicker";
 import { StageBar } from "./StageBar";
 import { StageHeader } from "./StageHeader";
+import { StageTerminalHost } from "./StageTerminalHost";
 import { useFeatureProgress } from "./useFeatureProgress";
+import { useLiveStages, useStageTerminals } from "./useStageTerminals";
 import { WorkflowList, WorkflowPicker } from "./WorkflowPicker";
 
 type Props = {
   featureDir: string;
   repoRoot: string;
   feature: string;
+  /** The feature tab is the active tab. */
+  active: boolean;
   /** Called with the tab's title: `<feature> · <current stage>`. */
   onTitle: (title: string) => void;
   /** Opens a produced file: `.md` in a markdown tab, anything else in an editor tab. */
@@ -34,6 +42,7 @@ export function FeaturePane({
   featureDir,
   repoRoot,
   feature,
+  active,
   onTitle,
   onOpenPath,
 }: Props) {
@@ -65,6 +74,7 @@ export function FeaturePane({
       featureDir={featureDir}
       repoRoot={repoRoot}
       feature={feature}
+      active={active}
       onTitle={onTitle}
       onOpenPath={onOpenPath}
     />
@@ -76,10 +86,21 @@ function LoadedPane({
   featureDir,
   repoRoot,
   feature,
+  active,
   onTitle,
   onOpenPath,
 }: Props & { catalog: Catalog }) {
-  const { state, record } = useFeatureProgress(featureDir, repoRoot, catalog);
+  const { state, record, refresh } = useFeatureProgress(
+    featureDir,
+    repoRoot,
+    catalog,
+  );
+  const unattendedExit = useRef<(key: string) => void>(() => {});
+  const terminals = useStageTerminals(featureDir, repoRoot, (key) =>
+    unattendedExit.current(key),
+  );
+  const live = useLiveStages(terminals.entries);
+  const anyLive = Object.values(live).some(Boolean);
   const [selected, setSelected] = useState<number | null>(null);
   const [failed, setFailed] = useState<{
     key: string;
@@ -87,7 +108,7 @@ function LoadedPane({
   } | null>(null);
   const [checking, setChecking] = useState(false);
   const progress = state?.progress ?? null;
-  const title = featureTabTitle(feature, progress);
+  const title = featureTabTitle(feature, progress, anyLive);
 
   const onTitleRef = useRef(onTitle);
   onTitleRef.current = onTitle;
@@ -144,48 +165,60 @@ function LoadedPane({
     );
   };
 
-  /** Runs the stage's check; the only place a check ever runs. Returns whether it passed. */
-  const check = async () => {
-    if (!shown?.check || checking) return false;
+  /** Runs a stage's check; only Next, Recheck and an unattended stage's exit call it. Returns whether it passed. */
+  const checkStage = async (stage: StageProgress) => {
+    if (!stage.check || checking) return false;
     setChecking(true);
+    const dir = stage.repoScoped ? repoRoot : featureDir;
     try {
       const result = await runCheck(
         repoRoot,
         featureDir,
         entry.dir,
-        shown.check,
+        stage.check,
       );
       if (result.passed) {
         setFailed(null);
         await record(
-          { kind: "mark", stage: shown.key, mark: "passed", at: now() },
-          markDir,
+          { kind: "mark", stage: stage.key, mark: "passed", at: now() },
+          dir,
         );
       } else {
-        setFailed({ key: shown.key, result });
+        setFailed({ key: stage.key, result });
         // A failing recheck withdraws an older pass.
-        if (shown.markedAt)
+        if (stage.markedAt)
           await record(
-            { kind: "mark", stage: shown.key, mark: "clear", at: now() },
-            markDir,
+            { kind: "mark", stage: stage.key, mark: "clear", at: now() },
+            dir,
           );
       }
       return result.passed;
     } catch (e) {
       console.error("could not run the check", e);
       setFailed({
-        key: shown.key,
+        key: stage.key,
         result: {
           passed: false,
           exit_code: null,
           output: String(e),
-          command: shown.check,
+          command: stage.check,
         },
       });
       return false;
     } finally {
       setChecking(false);
     }
+  };
+  const check = () => (shown ? checkStage(shown) : Promise.resolve(false));
+
+  // An unattended stage's gate is checked when its claude exits: files by a refresh, a check by running it.
+  unattendedExit.current = (key) => {
+    const stage = progress?.stages.find((s) => s.key === key);
+    if (stage?.gate === "check") void checkStage(stage);
+    else
+      void refresh().catch((e) =>
+        console.error("could not read the progress", e),
+      );
   };
 
   const onNext = async () => {
@@ -197,6 +230,33 @@ function LoadedPane({
     setSelected(index + 1);
   };
 
+  const stageDef = effectiveStage(workflow.stages[index], state.route);
+  const input = stageInput(stageDef, {
+    feature: featureRel(repoRoot, featureDir),
+    workflowDir: entry.dir,
+  });
+  const entryOfShown = shown ? terminals.entries[shown.key] : undefined;
+  const terminalShown = Boolean(entryOfShown && entryOfShown.leaf !== null);
+  const failedHere = Boolean(failed && shown && failed.key === shown.key);
+  const notStartedNote = entryOfShown
+    ? `${shown?.name}'s claude is not running. Its conversation is saved.`
+    : `${shown?.name} has not started yet.`;
+  const endedBar =
+    entryOfShown && entryOfShown.status === "ended" && shown ? (
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-1 text-xs text-muted-foreground">
+        <span>claude has exited.</span>
+        {!entryOfShown.unattended && (
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => terminals.resume(shown.key)}
+          >
+            Resume
+          </Button>
+        )}
+      </div>
+    ) : null;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <StageBar
@@ -205,6 +265,7 @@ function LoadedPane({
         selected={index}
         onSelect={setSelected}
         progress={progress}
+        live={live}
         routePicker={
           <RoutePicker routes={routes} route={state.route} onPick={pickRoute} />
         }
@@ -243,20 +304,58 @@ function LoadedPane({
           onSkip={() => void mark("skipped")}
         />
       )}
-      {failed && shown && failed.key === shown.key ? (
-        <CheckOutput result={failed.result} />
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-          {shown ? `${shown.name} has not started yet.` : null}
-          {hasRouteOverride(workflow.stages[index]) && (
-            <RoutePicker
-              routes={routes}
-              route={state.route}
-              onPick={pickRoute}
-            />
-          )}
+      <div className="relative min-h-0 flex-1">
+        <div className="absolute inset-0">
+          <StageTerminalHost
+            entries={terminals.entries}
+            shownKey={
+              terminalShown && !failedHere ? (shown?.key ?? null) : null
+            }
+            active={active}
+            repoRoot={repoRoot}
+            onShellExit={terminals.onShellExit}
+            bar={endedBar}
+          />
         </div>
-      )}
+        {(failedHere || !terminalShown) && (
+          <div className="absolute inset-0 z-10 flex flex-col bg-background">
+            {failedHere && failed ? (
+              <CheckOutput result={failed.result} />
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+                {shown ? notStartedNote : null}
+                {entryOfShown && shown && !entryOfShown.unattended && (
+                  <Button size="sm" onClick={() => terminals.resume(shown.key)}>
+                    Resume {shown.name}
+                  </Button>
+                )}
+                {!entryOfShown && input !== null && shown && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      terminals.start({
+                        key: shown.key,
+                        input,
+                        unattended: stageDef.mode === "unattended",
+                      })
+                    }
+                  >
+                    {stageDef.mode === "unattended" ? "Run" : "Start"}{" "}
+                    {shown.name}
+                  </Button>
+                )}
+                {hasRouteOverride(workflow.stages[index]) && (
+                  <RoutePicker
+                    routes={routes}
+                    route={state.route}
+                    onPick={pickRoute}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

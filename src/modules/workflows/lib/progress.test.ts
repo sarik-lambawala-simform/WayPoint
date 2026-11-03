@@ -276,6 +276,13 @@ describe("featureTabTitle", () => {
     expect(featureTabTitle("login", p)).toBe("login · Setup");
     expect(featureTabTitle("login", null)).toBe("login");
   });
+
+  it("carries a dot while a claude in the tab runs", () => {
+    const p = computeProgress(input());
+    expect(featureTabTitle("login", p, true)).toBe("login · Setup ●");
+    expect(featureTabTitle("login", null, true)).toBe("login ●");
+    expect(featureTabTitle("login", p, false)).toBe("login · Setup");
+  });
 });
 
 describe("headerActions", () => {

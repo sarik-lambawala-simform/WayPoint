@@ -127,7 +127,7 @@ export type CheckResult = {
   command: string;
 };
 
-/** Runs a `check` gate's command in the repo root. Only "Next" and "Recheck" call this. */
+/** Runs a `check` gate's command in the repo root. Only "Next", "Recheck" and the exit of an unattended stage call this. */
 export const runCheck = (
   repoRoot: string,
   featureDir: string,

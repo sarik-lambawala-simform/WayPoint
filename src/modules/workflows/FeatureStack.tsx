@@ -1,6 +1,8 @@
 import { cn } from "@/lib/utils";
 import type { FeatureTab, Tab } from "@/modules/tabs";
+import { useEffect, useMemo } from "react";
 import { FeaturePane } from "./FeaturePane";
+import { disposeClosedFeatures } from "./useStageTerminals";
 
 type Props = {
   tabs: Tab[];
@@ -11,7 +13,14 @@ type Props = {
 
 /** Every feature tab stays mounted; the active one is shown. */
 export function FeatureStack({ tabs, activeId, onTitle, onOpenPath }: Props) {
-  const features = tabs.filter((t): t is FeatureTab => t.kind === "feature");
+  const features = useMemo(
+    () => tabs.filter((t): t is FeatureTab => t.kind === "feature"),
+    [tabs],
+  );
+  // Stage terminals die with their feature tab.
+  useEffect(() => {
+    disposeClosedFeatures(new Set(features.map((t) => t.featureDir)));
+  }, [features]);
   return (
     <>
       {features.map((t) => (
@@ -23,6 +32,7 @@ export function FeatureStack({ tabs, activeId, onTitle, onOpenPath }: Props) {
             featureDir={t.featureDir}
             repoRoot={t.repoRoot}
             feature={t.feature}
+            active={t.id === activeId}
             onTitle={(title) => onTitle(t.id, title)}
             onOpenPath={onOpenPath}
           />
