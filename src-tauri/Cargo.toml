@@ -77,6 +77,8 @@ futures-util = "0.3"
 tokio = { version = "1", default-features = false, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 tempfile = "3"
 which = "8.0.4"
+serde_norway = "0.9" # fork: workflow files
+tauri-plugin-dialog = "2" # fork: folder picker
 
 [dev-dependencies]
 proptest = "1"

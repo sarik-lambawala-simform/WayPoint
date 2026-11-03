@@ -31,6 +31,7 @@ import {
 import { AiComposerProvider } from "@/modules/ai/lib/composer";
 import { native } from "@/modules/ai/lib/native";
 import { CommandPalette, createCommandItems } from "@/modules/command-palette";
+import { FeatureDialogs, useWorkflowsEntry } from "@/modules/workflows"; // fork
 import { useControlBridge } from "@/modules/control";
 import {
   type EditorPaneHandle,
@@ -179,6 +180,7 @@ export default function App() {
     closeAiDiffTab,
     openGitDiffTab,
     openCommitHistoryTab,
+    openFeatureTab, // fork
     openCommitFileDiffTab,
     closeTab,
     closeTabs,
@@ -1186,6 +1188,17 @@ export default function App() {
     return meta.id;
   }, [activeCwd, home, workspaceEnv, newTab, setActiveSpaceForNewTabs]);
 
+  // fork: WayPoint workflows entry points and feature tab reopen
+  const workflows = useWorkflowsEntry({
+    tabs,
+    booted,
+    spacesHydrated,
+    workspaceEnv,
+    openFeatureTab,
+    newTab,
+    setActiveSpaceForNewTabs,
+  });
+
   const handleDeleteSpace = useCallback(
     (id: string) => {
       const nextSpaceId = useSpaces.getState().remove(id);
@@ -1286,6 +1299,9 @@ export default function App() {
             openSpacesOverview: () => setSwitcherOpen(true),
             newSpace: () => void handleNewSpace(),
             switchSpace: (id) => useSpaces.getState().setActive(id),
+            openRepo: () => void workflows.openRepo(), // fork
+            openFeature: () => void workflows.openFeature(), // fork
+            newFeature: () => void workflows.newFeature(), // fork
           })
         : [],
     [
@@ -1309,6 +1325,9 @@ export default function App() {
       askFromSelection,
       activeSpaceId,
       handleNewSpace,
+      workflows.openRepo,
+      workflows.openFeature,
+      workflows.newFeature,
     ],
   );
 
@@ -1637,6 +1656,14 @@ export default function App() {
             onOpenChange={setNewEditorOpen}
             rootPath={explorerRoot ?? home}
             onCreated={(path) => openFileTab(path)}
+          />
+
+          {/* fork: WayPoint feature dialogs */}
+          <FeatureDialogs
+            state={workflows.dialog}
+            onClose={workflows.closeDialog}
+            onOpenFeature={workflows.onOpenFeature}
+            onCreateFeature={workflows.onCreateFeature}
           />
 
           <UpdaterDialog />

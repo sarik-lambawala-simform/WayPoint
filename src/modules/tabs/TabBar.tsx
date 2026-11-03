@@ -33,6 +33,7 @@ import {
   CancelCircleIcon,
   CheckmarkCircle01Icon,
   Clock01Icon,
+  Route01Icon, // fork
   ComputerTerminal02Icon,
   GitCompareIcon,
   Globe02Icon,
@@ -723,6 +724,17 @@ export function TabIcon({ tab }: { tab: Tab }) {
     return (
       <HugeiconsIcon
         icon={Clock01Icon}
+        size={14}
+        strokeWidth={2}
+        className="shrink-0"
+      />
+    );
+  }
+  // fork: feature tab
+  if (tab.kind === "feature") {
+    return (
+      <HugeiconsIcon
+        icon={Route01Icon}
         size={14}
         strokeWidth={2}
         className="shrink-0"

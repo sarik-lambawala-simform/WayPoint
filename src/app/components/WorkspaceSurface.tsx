@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { AiDiffStack, EditorStack, GitDiffStack } from "@/modules/editor";
 import { GitHistoryStack } from "@/modules/git-history";
 import { MarkdownStack } from "@/modules/markdown";
+import { FeatureStack } from "@/modules/workflows"; // fork
 import { PreviewStack } from "@/modules/preview";
 import type { Tab } from "@/modules/tabs";
 import { TerminalStack } from "@/modules/terminal";
@@ -72,6 +73,7 @@ export function WorkspaceSurface({
   const isAiDiffTab = kind === "ai-diff";
   const isGitDiffTab = kind === "git-diff" || kind === "git-commit-file";
   const isGitHistoryTab = kind === "git-history";
+  const isFeatureTab = kind === "feature"; // fork
 
   return (
     <div className="relative h-full min-h-0">
@@ -157,6 +159,13 @@ export function WorkspaceSurface({
           onOpenCommitFile={onOpenCommitFile}
           onSearchHandle={onGitHistorySearchHandle}
         />
+      </div>
+      {/* fork: WayPoint feature tabs */}
+      <div
+        className={cn(LAYER, !isFeatureTab && "invisible pointer-events-none")}
+        aria-hidden={!isFeatureTab}
+      >
+        <FeatureStack tabs={tabs} activeId={activeId} />
       </div>
     </div>
   );

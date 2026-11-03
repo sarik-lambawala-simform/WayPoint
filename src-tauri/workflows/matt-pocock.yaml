@@ -1,0 +1,41 @@
+# fork: WayPoint's shipped default workflow. Parsed by src-tauri/src/modules/workflows.
+version: 1
+title: Matt Pocock
+description: Grill, spec, tickets, then the Ralph loop. Wayfinder for foggy efforts.
+stages:
+  - name: Setup
+    skill: setup-matt-pocock-skills
+    scope: repo
+    produces: [docs/agents/issue-tracker.md]
+  - name: Grill
+    skill: grill-with-docs
+    done_when: confirm
+    routes:
+      wayfinder:
+        name: Wayfinder
+        skill: wayfinder
+        args: "{{ feature }}"
+        produces: [map.md]
+        done_when: map
+  - name: Prototype
+    skill: prototype
+    session: continue
+    optional: true
+    done_when: confirm
+  - name: Spec
+    skill: to-spec
+    session: continue
+    produces: [spec.md]
+    routes:
+      wayfinder: { session: fresh, args: "{{ feature }}/map.md" }
+  - name: Tickets
+    skill: to-tickets
+    session: continue
+    produces: [issues/*.md]
+    done_when: tickets
+  - name: Loop
+    run: loop
+  - name: Retro
+    skill: retro
+    optional: true
+    done_when: confirm
