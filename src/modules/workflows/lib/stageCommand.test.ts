@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   featureRel,
   forkLine,
+  freshNote,
+  joinNotes,
+  missingSessionInput,
   freshLine,
   rerunNote,
   resumeLine,
@@ -110,5 +113,30 @@ describe("placeholders", () => {
   it("makes the feature folder relative to the repo root", () => {
     expect(featureRel("/r", "/r/.scratch/f")).toBe(".scratch/f");
     expect(featureRel("/r/", "\\r\\.scratch\\f")).toBe(".scratch/f");
+  });
+});
+
+describe("when there is no session to continue", () => {
+  const vars = { feature: ".scratch/f", workflowDir: "/w" };
+
+  it("has Tickets start fresh from the spec's path", () => {
+    expect(missingSessionInput({ skill: "to-tickets" }, vars)).toBe(
+      "/to-tickets .scratch/f/spec.md",
+    );
+  });
+
+  it("has no fallback for another stage, which stops and asks", () => {
+    expect(missingSessionInput({ skill: "to-spec" }, vars)).toBeNull();
+    expect(missingSessionInput({}, vars)).toBeNull();
+  });
+
+  it("notes a fresh start in the terminal without the word claude", () => {
+    expect(freshNote()).not.toMatch(/claude/i);
+    expect(freshNote()).toMatch(/^echo "/);
+  });
+
+  it("joins notes into one shell line", () => {
+    expect(joinNotes([undefined, "echo a", "echo b"])).toBe("echo a; echo b");
+    expect(joinNotes([undefined])).toBeUndefined();
   });
 });

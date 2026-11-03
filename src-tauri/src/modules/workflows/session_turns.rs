@@ -97,6 +97,14 @@ pub fn turns_since(repo_root: &str, session_id: &str, since: &str) -> Option<u32
     ))
 }
 
+/// Whether each session's transcript is on this machine, in the order given.
+pub fn sessions_present(home: &Path, repo_root: &str, session_ids: &[String]) -> Vec<bool> {
+    session_ids
+        .iter()
+        .map(|id| transcript_path(home, repo_root, id).is_some_and(|p| p.is_file()))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +159,20 @@ mod tests {
         assert_eq!(
             count_turns_since(lines.into_iter(), "2026-11-03T10:01:00.000Z"),
             2
+        );
+    }
+
+    #[test]
+    fn a_session_is_present_only_when_its_transcript_file_is() {
+        let home = tempfile::tempdir().unwrap();
+        let dir = home.path().join(".claude/projects/-r");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{ID}.jsonl")), "{}\n").unwrap();
+        let other = "0a1c2a52-8c0e-4a1f-9d57-3b1d3a0f6a22".to_string();
+        let ids = vec![ID.to_string(), other, "../x".to_string()];
+        assert_eq!(
+            sessions_present(home.path(), "/r", &ids),
+            vec![true, false, false]
         );
     }
 }

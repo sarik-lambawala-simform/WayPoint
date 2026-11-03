@@ -130,6 +130,10 @@ export const sessionTurns = (
     since,
   });
 
+/** For each session id, whether claude's transcript for it is on this machine. */
+export const sessionsPresent = (repoRoot: string, sessionIds: string[]) =>
+  invoke<boolean[]>("workflows_sessions_present", { repoRoot, sessionIds });
+
 export type CheckResult = {
   passed: boolean;
   /** Null when the command did not start, timed out or was killed. */

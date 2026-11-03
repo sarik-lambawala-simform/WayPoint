@@ -18,6 +18,10 @@ type Props = {
   outOfDate?: { earlier: string; canRerun: boolean; onRerun: () => void };
   /** "Grill has 2 more turns since Spec forked"; shown softly, the stage is not out of date. */
   behind?: string | null;
+  /** The stage's own claude session is not on this machine. */
+  noSession?: boolean;
+  /** Said softly on the stage, e.g. that it started fresh. */
+  note?: string | null;
 };
 
 /** One line under the stage bar: the stage, its chips, what it produced, and what to do next. */
@@ -33,6 +37,8 @@ export function StageHeader({
   checking = false,
   outOfDate,
   behind,
+  noSession = false,
+  note,
 }: Props) {
   const literal = stage.produces.filter((p) => !p.includes("*"));
   const missing = literal.filter((p) => !stage.produced.includes(p));
@@ -43,6 +49,7 @@ export function StageHeader({
         state={stage.state}
         repoScoped={stage.repoScoped}
         outOfDate={Boolean(outOfDate)}
+        noSession={noSession}
       />
       {outOfDate && (
         <span className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
@@ -61,6 +68,9 @@ export function StageHeader({
             Re-run {stage.name}
           </Button>
         </span>
+      )}
+      {note && (
+        <span className="text-[11px] text-muted-foreground">{note}</span>
       )}
       {behind && (
         <span className="text-[11px] text-muted-foreground">{behind}</span>

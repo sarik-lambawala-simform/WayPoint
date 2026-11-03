@@ -31,6 +31,14 @@ export const rerunNote = (oldId: string) =>
 export const unattendedLine = (command: string) =>
   `claude -p "${command.replace(/[\\"$`]/g, "\\$&")}"`;
 
+/** Typed before a stage that started fresh for want of a session to fork. Avoids the word the agent detector arms on. */
+export const freshNote = () =>
+  `echo "Started fresh: there was no earlier session to continue."`;
+
+/** Several notes in one shell line. */
+export const joinNotes = (notes: (string | undefined)[]) =>
+  notes.filter(Boolean).join("; ") || undefined;
+
 export type Vars = { feature: string; workflowDir: string };
 
 /** `{{ feature }}` and `{{ workflow_dir }}`; any other name stays as written. */
@@ -76,4 +84,17 @@ export function stageInput(
   }
   if (stage.prompt) return substituteVars(stage.prompt, vars);
   return null;
+}
+
+/**
+ * What Tickets types when there is no session to continue: the spec's path instead of the
+ * conversation. Null for any other stage, which stops and asks.
+ */
+export function missingSessionInput(
+  stage: Pick<Stage, "skill">,
+  vars: Vars,
+): string | null {
+  return stage.skill === "to-tickets"
+    ? `/to-tickets ${vars.feature}/spec.md`
+    : null;
 }

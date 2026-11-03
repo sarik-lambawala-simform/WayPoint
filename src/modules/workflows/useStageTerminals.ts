@@ -14,6 +14,7 @@ import {
 import {
   forkLine,
   freshLine,
+  joinNotes,
   rerunNote,
   resumeLine,
   unattendedLine,
@@ -81,6 +82,8 @@ export type StartRequest = {
   unattended: boolean;
   /** The session this stage forks (`session: continue`); null starts a fresh session. */
   forkFrom?: string | null;
+  /** A shell line (an `echo`) typed before claude starts. */
+  note?: string;
 };
 
 /**
@@ -180,7 +183,7 @@ export function useStageTerminals(
    * re-run takes a new session id (forked again from `forkFrom`) and keeps the shell it has.
    */
   const start = useCallback(
-    ({ key, input, unattended, forkFrom }: StartRequest) => {
+    ({ key, input, unattended, forkFrom, note: extra }: StartRequest) => {
       const previous = entriesRef.current[key];
       if (previous?.status === "running") return;
       const sessionId = crypto.randomUUID();
@@ -197,10 +200,12 @@ export function useStageTerminals(
         : forkFrom
           ? forkLine(forkFrom, sessionId)
           : freshLine(sessionId);
-      const note =
+      const note = joinNotes([
         previous && !previous.unattended
           ? rerunNote(previous.sessionId)
-          : undefined;
+          : undefined,
+        extra,
+      ]);
       void launch(leaf, line, unattended ? null : input, note);
     },
     [featureDir, launch],
@@ -235,6 +240,23 @@ export function useLiveStages(
         live[key] = pty !== null && pty in s.phases;
       }
       return live;
+    }),
+  );
+}
+
+/** For each stage, whether its claude is mid-turn (working, not waiting for the user). */
+export function useWorkingStages(
+  entries: TerminalEntries,
+): Record<string, boolean> {
+  return useAgentActivityStore(
+    useShallow((s) => {
+      const working: Record<string, boolean> = {};
+      for (const [key, e] of Object.entries(entries)) {
+        if (e.leaf === null || e.status !== "running") continue;
+        const pty = ptyIdForLeaf(e.leaf);
+        working[key] = pty !== null && s.phases[pty] === "working";
+      }
+      return working;
     }),
   );
 }

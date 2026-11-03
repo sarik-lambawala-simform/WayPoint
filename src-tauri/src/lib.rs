@@ -352,6 +352,7 @@ pub fn run() {
             workflows::commands::workflows_build_tickets, // fork
             workflows::commands::workflows_map_facts, // fork
             workflows::commands::workflows_session_turns, // fork
+            workflows::commands::workflows_sessions_present, // fork
             workspace::workspace_current_dir,
             control::control_frontend_ready,
             control::control_respond,

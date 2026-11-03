@@ -20,16 +20,19 @@ export function StageChips({
   state,
   repoScoped = false,
   outOfDate = false,
+  noSession = false,
 }: {
   state: StageState;
   /** A `scope: repo` stage that is done is done for every feature of the repo. */
   repoScoped?: boolean;
   /** A forked stage whose fork is older than an earlier stage's session. */
   outOfDate?: boolean;
+  /** The stage's own claude session is not on this machine. */
+  noSession?: boolean;
 }) {
   const label =
     state === "done" && repoScoped ? "done (repo-wide)" : LABEL[state];
-  if (!label && !outOfDate) return null;
+  if (!label && !outOfDate && !noSession) return null;
   return (
     <>
       {label && (
@@ -45,6 +48,11 @@ export function StageChips({
       {outOfDate && (
         <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-px text-[10px] leading-4 text-amber-700 dark:text-amber-400">
           out of date
+        </span>
+      )}
+      {noSession && (
+        <span className="shrink-0 rounded bg-muted px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
+          no session here
         </span>
       )}
     </>

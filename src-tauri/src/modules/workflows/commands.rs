@@ -136,6 +136,17 @@ pub async fn workflows_session_turns(
     .flatten()
 }
 
+/// Whether each claude session's transcript is on this machine; all false without a home folder.
+#[tauri::command]
+pub async fn workflows_sessions_present(repo_root: String, session_ids: Vec<String>) -> Vec<bool> {
+    tokio::task::spawn_blocking(move || match dirs::home_dir() {
+        Some(home) => super::session_turns::sessions_present(&home, &repo_root, &session_ids),
+        None => vec![false; session_ids.len()],
+    })
+    .await
+    .unwrap_or_default()
+}
+
 pub fn build_tickets(issues_dir: &std::path::Path) -> Vec<String> {
     read_tickets(issues_dir)
         .unwrap_or_default()

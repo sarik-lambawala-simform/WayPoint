@@ -37,6 +37,68 @@ export function forkFromId(
   return parent === null ? null : entries[parent].sessionId;
 }
 
+/** What starting a stage does about its session. */
+export type ForkPlan =
+  | { kind: "fresh" }
+  | { kind: "fork"; from: string; parentKey: string; midTurn: boolean }
+  /** A `continue` stage with no session to fork; `goBack` is the stage to return to. */
+  | { kind: "missing"; goBack: number | null };
+
+/**
+ * `presence` maps session ids to whether claude's transcript is on this machine (absent = not
+ * checked yet, taken as there). A session running in a terminal of this run is always there.
+ * `working` maps stage keys to whether their claude is mid-turn.
+ */
+export function forkPlan(
+  stages: ForkStage[],
+  entries: TerminalEntries,
+  index: number,
+  presence: Record<string, boolean>,
+  working: Record<string, boolean>,
+): ForkPlan {
+  if (stages[index]?.session !== "continue" || index === 0)
+    return { kind: "fresh" };
+  const parentKey = forkParent(stages, entries, index);
+  const parent = parentKey === null ? null : entries[parentKey];
+  if (parentKey === null || !parent) {
+    return { kind: "missing", goBack: rootIndex(stages, index) };
+  }
+  if (parent.leaf === null && presence[parent.sessionId] === false)
+    return {
+      kind: "missing",
+      goBack: stages.findIndex((s) => s.key === parentKey),
+    };
+  return {
+    kind: "fork",
+    from: parent.sessionId,
+    parentKey,
+    midTurn: Boolean(working[parentKey]),
+  };
+}
+
+/** The nearest earlier stage that does not itself continue another: where a chain of forks began. */
+export function rootIndex(stages: ForkStage[], index: number): number | null {
+  for (let i = index - 1; i >= 0; i--) {
+    if (stages[i].session !== "continue") return i;
+  }
+  return null;
+}
+
+/** A stage whose own session is not on this machine: it can be re-run, not resumed. */
+export function noSessionHere(
+  entry:
+    | { sessionId: string; leaf: number | null; unattended: boolean }
+    | undefined,
+  presence: Record<string, boolean>,
+): boolean {
+  return Boolean(
+    entry &&
+      !entry.unattended &&
+      entry.leaf === null &&
+      presence[entry.sessionId] === false,
+  );
+}
+
 /**
  * The forked stages that are out of date: some earlier stage's claude session was started after
  * their own. Maps the stage's key to the earlier stage's key. Nothing is flagged when a start
