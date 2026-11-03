@@ -1,5 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
+import { loopLive } from "./lib/api";
+import type { LiveRun } from "./lib/loopLaunch";
 import type { LoopRunView } from "./lib/loopRun";
 
 /**
@@ -52,4 +54,34 @@ export function useNow(running: boolean): number {
     return () => clearInterval(t);
   }, [running]);
   return now;
+}
+
+/**
+ * The repo's live runs, read every two seconds while `enabled` and again on `refresh`, so "Start
+ * the loop" knows when another feature has one. Empty until the first read.
+ */
+export function useLiveRuns(
+  repoRoot: string,
+  enabled: boolean,
+): { live: LiveRun[]; refresh: () => void } {
+  const [live, setLive] = useState<LiveRun[]>([]);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let stopped = false;
+    const read = () =>
+      loopLive(repoRoot).then(
+        (runs) => {
+          if (!stopped) setLive(runs);
+        },
+        () => {},
+      );
+    void read();
+    const t = setInterval(read, 2000);
+    return () => {
+      stopped = true;
+      clearInterval(t);
+    };
+  }, [repoRoot, enabled, tick]);
+  return { live, refresh: () => setTick((n) => n + 1) };
 }

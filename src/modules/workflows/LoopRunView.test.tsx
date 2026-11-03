@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Workflow } from "./lib/api";
 import type { LoopRunView as View, RunView, TicketRow } from "./lib/loopRun";
-import { LoopRunView } from "./LoopRunView";
+import { type LaunchTarget, LoopRunView } from "./LoopRunView";
 import { StageBar } from "./StageBar";
 
 const run = (over: Partial<RunView> = {}): RunView => ({
@@ -20,6 +20,7 @@ const run = (over: Partial<RunView> = {}): RunView => ({
   heartbeat_at_ms: null,
   tickets_ended: 2,
   cost: { usd: 3.1, partial: null },
+  launch_line: null,
   ...over,
 });
 
@@ -130,5 +131,63 @@ describe("the Loop cell's chip", () => {
 
   it("shows no chip while the feature has no run", () => {
     expect(bar(null)).not.toContain("run-chip");
+  });
+
+  describe("launching", () => {
+    const target = (over: Partial<LaunchTarget> = {}): LaunchTarget => ({
+      repoRoot: "/r",
+      featureDir: "/r/.scratch/demo",
+      live: [],
+      onStarted: () => {},
+      ...over,
+    });
+    const renderLaunch = (view: View, launch: LaunchTarget) =>
+      renderToStaticMarkup(<LoopRunView view={view} launch={launch} />);
+
+    it("offers Start the loop on a finished run and Start the loop again on a died one", () => {
+      const done = renderLaunch({ run: run(), tickets: [] }, target());
+      expect(done).toContain("Start the loop");
+      expect(done).not.toContain("Start the loop again");
+      const died = renderLaunch(
+        { run: run({ status: "died", phase: "running" }), tickets: [] },
+        target(),
+      );
+      expect(died).toContain("Start the loop again");
+    });
+
+    it("offers no start while this feature's run is live", () => {
+      const html = renderLaunch(
+        {
+          run: run({
+            status: "live",
+            phase: "running",
+            heartbeat_at_ms: Date.now(),
+          }),
+          tickets: [],
+        },
+        target(),
+      );
+      expect(html).not.toContain("Start the loop");
+    });
+
+    it("disables the start and names the feature when another one has a live run", () => {
+      const html = renderLaunch(
+        { run: null, tickets: [] },
+        target({ live: [{ feature: "other-feature", run_id: "r1" }] }),
+      );
+      expect(html).toContain("other-feature has a live run in this repo.");
+      expect(html).toMatch(/<button[^>]*disabled[^>]*>Start the loop/);
+    });
+
+    it("shows the launch line the app wrote in the header", () => {
+      const html = renderLaunch(
+        {
+          run: run({ launch_line: "setsid ralph/run-ralph-tickets.sh -y" }),
+          tickets: [],
+        },
+        target(),
+      );
+      expect(html).toContain("setsid ralph/run-ralph-tickets.sh -y");
+    });
   });
 });

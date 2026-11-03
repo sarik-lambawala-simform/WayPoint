@@ -42,7 +42,7 @@ import { StageHeader } from "./StageHeader";
 import { StageTerminalHost } from "./StageTerminalHost";
 import { useBehindTurns } from "./useBehind";
 import { useFeatureProgress } from "./useFeatureProgress";
-import { useLoopRun } from "./useLoopRun";
+import { useLiveRuns, useLoopRun } from "./useLoopRun";
 import { useSessionsPresent } from "./useSessionsPresent";
 import {
   useLiveStages,
@@ -171,6 +171,10 @@ function LoadedPane({
   const shownIndex = Math.min(
     selected ?? progress?.current ?? progress?.lastPassed ?? 0,
     Math.max(forkStages.length - 1, 0),
+  );
+  const liveRuns = useLiveRuns(
+    repoRoot,
+    resolvedEntry?.workflow.stages[shownIndex]?.run === "loop",
   );
   const behindOf = behindTarget(forkStages, terminals.entries, shownIndex);
   const behindTurns = useBehindTurns(repoRoot, behindOf);
@@ -511,7 +515,15 @@ function LoadedPane({
         </div>
         {loopShown && (
           <div className="absolute inset-0 z-10 bg-background">
-            <LoopRunView view={loopRun} />
+            <LoopRunView
+              view={loopRun}
+              launch={{
+                repoRoot,
+                featureDir,
+                live: liveRuns.live,
+                onStarted: liveRuns.refresh,
+              }}
+            />
           </div>
         )}
         {blocksStart(wsl.gate) && (

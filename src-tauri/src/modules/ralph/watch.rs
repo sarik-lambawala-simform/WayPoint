@@ -10,7 +10,8 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
-use super::runs::{read_loop_view, script_alive, Env, LoopView};
+use super::keepawake;
+use super::runs::{read_loop_view, script_alive, Env, LoopView, RunStatus};
 
 const TICK: Duration = Duration::from_secs(1);
 /// Events of one burst (a stream line, a state swap) are read once.
@@ -48,6 +49,12 @@ pub fn watch_loop(
             };
             let view = read_loop_view(&repo_root, &feature_dir, &feature, &env);
             watches.follow(view.run.as_ref().map(|r| Path::new(&r.dir)));
+            keepawake::report(
+                id,
+                view.run
+                    .as_ref()
+                    .is_some_and(|r| r.status == RunStatus::Live),
+            );
             if last.as_ref() != Some(&view) {
                 if !on_view(view.clone()) {
                     break;
@@ -59,6 +66,7 @@ pub fn watch_loop(
                 while rx.try_recv().is_ok() {}
             }
         }
+        keepawake::report(id, false);
         if let Ok(mut all) = registry().lock() {
             all.remove(&id);
         }

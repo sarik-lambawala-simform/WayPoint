@@ -30,6 +30,7 @@ const run = (over: Partial<RunView> = {}): RunView => ({
   heartbeat_at_ms: 1_050_000,
   tickets_ended: 0,
   cost: { usd: 0, partial: null },
+  launch_line: null,
   ...over,
 });
 

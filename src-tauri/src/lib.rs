@@ -355,6 +355,8 @@ pub fn run() {
             workflows::commands::workflows_sessions_present, // fork
             workflows::commands::workflows_wsl_check, // fork
             workflows::commands::workflows_loop_view, // fork
+            workflows::commands::workflows_loop_live, // fork
+            workflows::commands::workflows_loop_start, // fork
             workflows::commands::workflows_loop_watch, // fork
             workflows::commands::workflows_loop_unwatch, // fork
             workspace::workspace_current_dir,

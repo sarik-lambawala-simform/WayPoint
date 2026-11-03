@@ -247,6 +247,9 @@ pub struct RunView {
     pub tickets_ended: usize,
     /// USD of the tickets the run has ended.
     pub cost: Cost,
+    /// The command the app started the run with, from the run folder's `launch-line`; None for a
+    /// run started elsewhere.
+    pub launch_line: Option<String>,
 }
 
 /// A ticket's time and cost from the newest run that recorded it.
@@ -287,6 +290,40 @@ const CUT: &str =
 const DIED_COST: &str = "The run died during this ticket, so its cost was never recorded.";
 const DIED_TIME: &str = "The run died during this ticket; this is the time up to its last output.";
 const LIVE_COST: &str = "A ticket that is still running counts when it ends.";
+
+/// The file the app writes in a run folder it starts: the command it ran.
+pub const LAUNCH_LINE_FILE: &str = "launch-line";
+
+/// A run that is live, and the feature it works on.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct LiveRun {
+    pub feature: String,
+    pub run_id: String,
+}
+
+/// Every live run under `<repo>/logs/`, whatever feature it works on. One run per repo means this
+/// holds at most one entry, unless runs were started outside the app.
+pub fn live_runs(repo_root: &Path, env: &Env) -> Vec<LiveRun> {
+    run_dirs(&repo_root.join("logs"))
+        .into_iter()
+        .filter_map(|dir| {
+            let state = read_state(&dir)?;
+            if state.phase == "finished" {
+                return None;
+            }
+            let heartbeat = mtime(&dir.join("heartbeat"))
+                .map(|t| env.now.duration_since(t).unwrap_or_default());
+            let alive = (env.pid_alive)(state.script_pid);
+            (run_status(Some(&state), heartbeat, alive) == RunStatus::Live).then(|| LiveRun {
+                feature: state.feature.clone(),
+                run_id: dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+            })
+        })
+        .collect()
+}
 
 /// The signals a view needs from outside the folder; tests pass their own.
 pub struct Env<'a> {
@@ -361,6 +398,10 @@ fn view_run(
         heartbeat_at_ms: heartbeat.map(ms_of),
         tickets_ended: rows.len(),
         cost: Cost { usd, partial },
+        launch_line: fs::read_to_string(dir.join(LAUNCH_LINE_FILE))
+            .ok()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty()),
     };
     (view, rows)
 }
@@ -667,6 +708,41 @@ mod tests {
         assert!(run.ended_at_ms.is_some());
         assert!(!died.tickets[0].running);
         assert!(died.tickets[0].spent.cost_partial.is_some());
+    }
+
+    #[test]
+    fn live_runs_names_the_feature_of_each_live_run_and_skips_the_rest() {
+        let repo = tempfile::tempdir().unwrap();
+        let logs = repo.path().join("logs");
+        let live = write_run(&logs, "r1", "running", "01", "");
+        fs::write(live.join("heartbeat"), "").unwrap();
+        write_run(&logs, "r0", "finished", "", "");
+        let second = write_run(&logs, "r2", "running", "01", "");
+        fs::write(second.join("heartbeat"), "").unwrap();
+        let now = SystemTime::now();
+        let found = live_runs(repo.path(), &env_at(now));
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].feature, "demo");
+        assert_eq!(found[0].run_id, "r1");
+        let later = live_runs(repo.path(), &env_at(now + Duration::from_secs(60)));
+        assert!(later.is_empty());
+    }
+
+    #[test]
+    fn a_run_view_carries_the_launch_line_the_app_wrote() {
+        let repo = tempfile::tempdir().unwrap();
+        let dir = write_run(&repo.path().join("logs"), "r1", "running", "", "");
+        fs::write(
+            dir.join(LAUNCH_LINE_FILE),
+            "setsid ralph/run-ralph-tickets.sh -y\n",
+        )
+        .unwrap();
+        let feature = feature_with_tickets(repo.path(), &["01"]);
+        let view = read_loop_view(repo.path(), &feature, "demo", &env_at(SystemTime::now()));
+        assert_eq!(
+            view.run.unwrap().launch_line.as_deref(),
+            Some("setsid ralph/run-ralph-tickets.sh -y")
+        );
     }
 
     #[test]

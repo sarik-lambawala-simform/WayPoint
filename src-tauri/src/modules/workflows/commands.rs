@@ -5,7 +5,10 @@ use super::check::{run_check, run_check_in_wsl, CheckResult};
 use super::map::{map_facts, MapFacts};
 use super::progress::{self, ProgressFile, ProgressRead, Update};
 use super::workflow::{shipped_workflow, Vars, Workflow};
-use crate::modules::ralph::runs::{read_loop_view, script_alive, Env, LoopView};
+use crate::modules::ralph::launch;
+use crate::modules::ralph::runs::{
+    live_runs, read_loop_view, script_alive, Env, LiveRun, LoopView,
+};
 use crate::modules::ralph::tickets::read_tickets;
 use crate::modules::ralph::watch::{unwatch, watch_loop};
 
@@ -202,6 +205,40 @@ pub async fn workflows_loop_view(
     .await
     .ok()
     .flatten()
+}
+
+/// The live runs of a repo, whatever feature each works on: the page disables "Start the loop"
+/// while another feature has one.
+#[tauri::command]
+pub async fn workflows_loop_live(repo_root: String) -> Vec<LiveRun> {
+    tokio::task::spawn_blocking(move || {
+        let repo = PathBuf::from(repo_root);
+        if !repo.is_absolute() {
+            return Vec::new();
+        }
+        let env = Env {
+            now: std::time::SystemTime::now(),
+            pid_alive: &script_alive,
+        };
+        live_runs(&repo, &env)
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Starts the script detached in the repo root. `args` and `launch_line` are what the launch form
+/// showed; the repo having a live run refuses the start.
+#[tauri::command]
+pub async fn workflows_loop_start(
+    repo_root: String,
+    args: Vec<String>,
+    launch_line: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        launch::start(&PathBuf::from(repo_root), &args, &launch_line)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Streams the Loop view to the page now and after every change; returns the id for

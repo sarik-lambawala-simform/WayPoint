@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { IS_WINDOWS } from "@/lib/platform";
 import { currentWorkspaceEnv, getWslHome } from "@/modules/workspace";
 import { featureDirOf, scratchDir } from "./featurePaths";
+import type { LiveRun } from "./loopLaunch";
 import type { MapFacts, ProgressFile } from "./progress";
 import { linuxPathOfHost, wslHostPath } from "./wsl";
 
@@ -231,3 +232,15 @@ export const mapFacts = (featureDir: string) =>
 /** What `command -v jq git curl claude` printed in the distro; rejects when wsl.exe cannot run it. */
 export const wslCheck = (distro: string) =>
   invoke<string>("workflows_wsl_check", { distro });
+
+/** The live runs of a repo, whatever feature each works on. */
+export const loopLive = (repoRoot: string) =>
+  invoke<LiveRun[]>("workflows_loop_live", { repoRoot });
+
+/** Starts the script detached in the repo root; rejects with why it could not. */
+export const startLoop = (repoRoot: string, args: string[], line: string) =>
+  invoke<void>("workflows_loop_start", {
+    repoRoot,
+    args,
+    launchLine: line,
+  });

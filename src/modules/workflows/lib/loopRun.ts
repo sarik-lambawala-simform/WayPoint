@@ -22,6 +22,8 @@ export type RunView = {
   heartbeat_at_ms: number | null;
   tickets_ended: number;
   cost: Cost;
+  /** The command the app started the run with; null for a run started elsewhere. */
+  launch_line: string | null;
 };
 
 export type Spent = {
