@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { Workflow } from "./lib/api";
 
@@ -6,10 +7,18 @@ type Props = {
   featureDir: string;
   selected: number;
   onSelect: (index: number) => void;
+  /** Replaces the plain workflow title, e.g. with the workflow picker. */
+  picker?: ReactNode;
 };
 
 /** Workflow name and feature path first, then one cell per stage in workflow order. */
-export function StageBar({ workflow, featureDir, selected, onSelect }: Props) {
+export function StageBar({
+  workflow,
+  featureDir,
+  selected,
+  onSelect,
+  picker,
+}: Props) {
   return (
     <div
       className="flex shrink-0 items-stretch overflow-x-auto border-b border-border/60"
@@ -17,7 +26,9 @@ export function StageBar({ workflow, featureDir, selected, onSelect }: Props) {
       aria-label="Stages"
     >
       <div className="flex min-w-48 max-w-72 shrink-0 flex-col justify-center gap-0.5 border-r border-border/60 px-3 py-2">
-        <span className="truncate text-xs font-medium">{workflow.title}</span>
+        {picker ?? (
+          <span className="truncate text-xs font-medium">{workflow.title}</span>
+        )}
         <span
           className="truncate text-[11px] text-muted-foreground"
           title={featureDir}

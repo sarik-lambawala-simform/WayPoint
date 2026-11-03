@@ -1,0 +1,7 @@
+version: 1
+title: No kind
+stages:
+  - name: One
+    skill: a
+  - name: Two
+    args: x

@@ -1,0 +1,6 @@
+version: 1
+title: Two kinds
+stages:
+  - name: One
+    skill: a
+    prompt: "do it"

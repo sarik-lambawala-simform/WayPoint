@@ -3,12 +3,21 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { native } from "@/modules/ai/lib/native";
 import { featureDirOf, scratchDir } from "./featurePaths";
 
-type Stage = {
+export type DoneWhen = "confirm" | "tickets" | "map" | { check: string };
+
+export type Stage = {
   name: string;
   skill?: string | null;
+  prompt?: string | null;
   run?: string | null;
+  args?: string | null;
+  mode?: "interactive" | "unattended";
+  session?: "continue" | "fresh" | null;
+  produces?: string[];
+  done_when?: DoneWhen | null;
   optional: boolean;
-  scope?: string | null;
+  scope?: "repo" | null;
+  routes?: Record<string, unknown>;
 };
 
 export type Workflow = {
@@ -18,8 +27,32 @@ export type Workflow = {
   stages: Stage[];
 };
 
-/** The shipped workflow, parsed by the Rust `workflows` module. */
-export const fetchShippedWorkflow = () => invoke<Workflow>("workflows_shipped");
+export type WorkflowSource = "repo" | "user" | "shipped";
+
+export type FileRef = { source: WorkflowSource; path: string };
+
+/** A workflow the picker offers: the file in use and the files it shadows. */
+export type CatalogEntry = {
+  id: string;
+  source: WorkflowSource;
+  path: string;
+  dir: string;
+  workflow: Workflow;
+  shadows: FileRef[];
+};
+
+export type LoadError = { file: string; line: number; message: string };
+
+export type Catalog = {
+  entries: CatalogEntry[];
+  errors: LoadError[];
+  /** The real path of the user workflows folder. */
+  user_dir: string;
+};
+
+/** Every workflow visible from a repo: shipped, `~/.config/waypoint/workflows/`, `.workflows/`. */
+export const fetchCatalog = (repoRoot: string) =>
+  invoke<Catalog>("workflows_catalog", { repoRoot });
 
 export async function pickFolder(): Promise<string | null> {
   const picked = await open({ directory: true, multiple: false });

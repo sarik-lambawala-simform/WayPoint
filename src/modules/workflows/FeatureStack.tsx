@@ -14,7 +14,7 @@ export function FeatureStack({ tabs, activeId }: Props) {
           key={t.id}
           className={cn("absolute inset-0", t.id !== activeId && "hidden")}
         >
-          <FeaturePane featureDir={t.featureDir} />
+          <FeaturePane featureDir={t.featureDir} repoRoot={t.repoRoot} />
         </div>
       ))}
     </>

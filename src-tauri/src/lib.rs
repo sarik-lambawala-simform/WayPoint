@@ -344,6 +344,7 @@ pub fn run() {
             workspace::ipc::wsl_home,
             workspace::workspace_authorize,
             workflows::commands::workflows_shipped, // fork
+            workflows::commands::workflows_catalog, // fork
             workspace::workspace_current_dir,
             control::control_frontend_ready,
             control::control_respond,

@@ -1,0 +1,6 @@
+version: 1
+title: Bad mode
+stages:
+  - name: One
+    skill: a
+    mode: sometimes
