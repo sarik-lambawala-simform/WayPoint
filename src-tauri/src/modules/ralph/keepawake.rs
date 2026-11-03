@@ -1,8 +1,10 @@
-//! Keeping the machine awake while a run is live. Linux only: macOS keeps the script's own
-//! `caffeinate`, which outlives the app, and Windows is the WSL ticket.
+//! Keeping the machine awake while a run is live. Linux and Windows: macOS keeps the script's own
+//! `caffeinate`, which outlives the app.
 //!
-//! The hold is a `systemd-inhibit` child that sleeps until it is dropped. It carries a parent-death
-//! signal, so an app that is killed does not leave the lock behind. Each watch of a loop reports
+//! On Linux the hold is a `systemd-inhibit` child that sleeps until it is dropped. It carries a
+//! parent-death signal, so an app that is killed does not leave the lock behind. On Windows it is a
+//! thread that sets `ES_SYSTEM_REQUIRED` (a per-thread request) and parks until told to end; the
+//! request dies with the thread, and with the process. Each watch of a loop reports
 //! whether the run it sees is live; the hold is taken when any report says live and released when
 //! none does. The decision is a pure function over those two facts.
 
@@ -30,6 +32,8 @@ struct State {
     live: HashSet<u32>,
     #[cfg(target_os = "linux")]
     child: Option<std::process::Child>,
+    #[cfg(windows)]
+    holder: Option<win::Holder>,
 }
 
 fn state() -> &'static Mutex<State> {
@@ -61,7 +65,14 @@ fn reap(s: &mut State) {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+fn reap(s: &mut State) {
+    if s.holder.as_ref().is_some_and(|h| h.ended()) {
+        s.holder = None;
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn reap(_s: &mut State) {}
 
 #[cfg(target_os = "linux")]
@@ -78,8 +89,62 @@ fn apply(s: &mut State) {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+fn apply(s: &mut State) {
+    match decide(s.holder.is_some(), !s.live.is_empty()) {
+        Hold::Take => s.holder = Some(win::Holder::start()),
+        Hold::Release => s.holder = None,
+        Hold::Keep => {}
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn apply(_s: &mut State) {}
+
+#[cfg(windows)]
+mod win {
+    use std::sync::mpsc::{channel, Sender};
+    use std::thread::JoinHandle;
+    use windows_sys::Win32::System::Power::{
+        SetThreadExecutionState, ES_CONTINUOUS, ES_SYSTEM_REQUIRED,
+    };
+
+    pub struct Holder {
+        end: Option<Sender<()>>,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    impl Holder {
+        pub fn start() -> Self {
+            let (end, ended) = channel::<()>();
+            let thread = std::thread::spawn(move || {
+                // SAFETY: only sets this thread's execution-state request.
+                unsafe { SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) };
+                // Parked until the sender goes away or sends.
+                let _ = ended.recv();
+                // SAFETY: clears this thread's request.
+                unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
+            });
+            Self {
+                end: Some(end),
+                thread: Some(thread),
+            }
+        }
+
+        pub fn ended(&self) -> bool {
+            self.thread.as_ref().is_none_or(|t| t.is_finished())
+        }
+    }
+
+    impl Drop for Holder {
+        fn drop(&mut self) {
+            drop(self.end.take());
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+}
 
 #[cfg(target_os = "linux")]
 fn inhibit() -> Option<std::process::Child> {

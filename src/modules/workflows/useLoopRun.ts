@@ -1,6 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import { loopLive } from "./lib/api";
+import { hostOf, loopLive, wslDistro } from "./lib/api";
 import type { LiveRun } from "./lib/loopLaunch";
 import type { LoopRunView } from "./lib/loopRun";
 
@@ -24,9 +24,11 @@ export function useLoopRun(
       if (!stopped) setView(next);
     };
     invoke<number>("workflows_loop_watch", {
-      repoRoot,
-      featureDir,
+      repoRoot: hostOf(repoRoot),
+      featureDir: hostOf(featureDir),
       feature,
+      // A WSL share has no file events: Rust polls (1 s for a live run, 5 s for new run folders).
+      poll: wslDistro() !== null,
       onView,
     }).then(
       (watchId) => {

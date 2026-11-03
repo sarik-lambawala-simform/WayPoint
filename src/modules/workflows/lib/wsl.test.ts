@@ -3,6 +3,7 @@ import {
   installCommand,
   isMntPath,
   linuxPathOfHost,
+  loopStartProblem,
   missingTools,
   missingWithInstall,
   repoLocationWarning,
@@ -107,5 +108,16 @@ describe("install commands", () => {
         install: "curl -fsSL https://claude.ai/install.sh | bash",
       },
     ]);
+  });
+});
+
+describe("loopStartProblem", () => {
+  it("is null when every tool is there and names each missing one with its install line", () => {
+    const all =
+      "/usr/bin/jq\n/usr/bin/git\n/usr/bin/curl\n/home/me/.local/bin/claude\n";
+    expect(loopStartProblem("Ubuntu", all)).toBeNull();
+    expect(
+      loopStartProblem("Ubuntu", "/usr/bin/git\n/usr/bin/curl\n/x/claude"),
+    ).toBe("Ubuntu lacks jq (sudo apt-get install -y jq).");
   });
 });

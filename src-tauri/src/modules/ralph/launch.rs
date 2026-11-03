@@ -60,10 +60,59 @@ pub fn detached_command(repo_root: &Path, args: &[String]) -> Command {
     cmd
 }
 
-/// Starts a run. `launch_line` is what the form showed; it is stored beside the run.
-pub fn start(repo_root: &Path, args: &[String], launch_line: &str) -> Result<(), String> {
-    if cfg!(windows) {
-        return Err("Starting the loop on Windows needs the WSL launch.".to_string());
+/// Where a Windows run lives: the WSL distro and the repo's Linux path. The app's `repo_root`
+/// is then the share path (`\\wsl.localhost\<distro>\...`) it reads and writes the run folder through.
+pub struct Wsl<'a> {
+    pub distro: &'a str,
+    pub linux_root: &'a str,
+}
+
+/// `wsl.exe` arguments of the launch: `-d <distro> --cd <linux path> -- setsid <script> <args>`.
+pub fn wsl_launch_args(distro: &str, linux_root: &str, args: &[String]) -> Vec<String> {
+    ["-d", distro, "--cd", linux_root, "--", "setsid", SCRIPT]
+        .into_iter()
+        .map(String::from)
+        .chain(args.iter().cloned())
+        .collect()
+}
+
+/// The `wsl.exe` command of a Windows start. It is spawned detached from the app's console
+/// (`DETACHED_PROCESS`) and put in no Job Object, so closing the app does not end the run.
+pub fn wsl_command(wsl: &Wsl, args: &[String]) -> Command {
+    let mut cmd = Command::new("wsl.exe");
+    cmd.args(wsl_launch_args(wsl.distro, wsl.linux_root, args))
+        .env_remove("TERAX_TERMINAL")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        cmd.creation_flags(DETACHED_PROCESS);
+    }
+    cmd
+}
+
+/// Starts a run. `launch_line` is what the form showed; it is stored beside the run. With `wsl`
+/// the script runs inside the distro; `repo_root` is then the share path.
+pub fn start(
+    repo_root: &Path,
+    args: &[String],
+    launch_line: &str,
+    wsl: Option<&Wsl>,
+) -> Result<(), String> {
+    match wsl {
+        None if cfg!(windows) => {
+            return Err("Starting the loop on Windows needs the WSL launch.".to_string());
+        }
+        Some(_) if !cfg!(windows) => {
+            return Err("The WSL launch is only available on Windows.".to_string());
+        }
+        Some(w) if !w.linux_root.starts_with('/') => {
+            return Err(format!("{}: not a Linux path", w.linux_root));
+        }
+        _ => {}
     }
     if !repo_root.is_absolute() || !repo_root.is_dir() {
         return Err(format!("{}: not a folder", repo_root.display()));
@@ -102,7 +151,11 @@ pub fn start(repo_root: &Path, args: &[String], launch_line: &str) -> Result<(),
     fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     fs::write(folder.join(LAUNCH_LINE_FILE), launch_line)
         .map_err(|e| format!("{}: {e}", folder.display()))?;
-    let mut child = match detached_command(repo_root, args).spawn() {
+    let mut cmd = match wsl {
+        Some(w) => wsl_command(w, args),
+        None => detached_command(repo_root, args),
+    };
+    let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => {
             let _ = fs::remove_dir_all(&folder);
@@ -143,6 +196,54 @@ mod tests {
     }
 
     #[test]
+    fn the_wsl_launch_line_is_wsl_exe_in_the_distro_with_setsid() {
+        let a = args(&[
+            "-y",
+            "--issues-dir",
+            ".scratch/demo",
+            "--run-dir",
+            "logs/r1",
+        ]);
+        assert_eq!(
+            wsl_launch_args("Ubuntu", "/home/me/app", &a).join(" "),
+            "-d Ubuntu --cd /home/me/app -- setsid ralph/run-ralph-tickets.sh -y --issues-dir .scratch/demo --run-dir logs/r1"
+        );
+        let wsl = Wsl {
+            distro: "Ubuntu",
+            linux_root: "/home/me/app",
+        };
+        let cmd = wsl_command(&wsl, &a);
+        assert_eq!(cmd.get_program(), OsStr::new("wsl.exe"));
+        let removed = cmd
+            .get_envs()
+            .find(|(k, _)| *k == OsStr::new("TERAX_TERMINAL"));
+        assert_eq!(removed, Some((OsStr::new("TERAX_TERMINAL"), None)));
+        let got: Vec<_> = cmd.get_args().collect();
+        assert_eq!(got.len(), 7 + a.len());
+        assert_eq!(got[6], OsStr::new(SCRIPT));
+    }
+
+    #[test]
+    fn a_wsl_start_needs_windows_and_a_linux_path() {
+        let a = args(&["-y", "--run-dir", "logs/r1"]);
+        let ok = Wsl {
+            distro: "Ubuntu",
+            linux_root: "/home/me/app",
+        };
+        let bad = Wsl {
+            distro: "Ubuntu",
+            linux_root: "C:\\app",
+        };
+        let repo = tempfile::tempdir().unwrap();
+        if !cfg!(windows) {
+            assert!(start(repo.path(), &a, "", Some(&ok))
+                .unwrap_err()
+                .contains("only available on Windows"));
+        }
+        assert!(start(repo.path(), &a, "", Some(&bad)).is_err());
+    }
+
+    #[test]
     fn the_run_folder_must_be_new_and_under_logs() {
         let ok = args(&["-y", "--run-dir", "logs/ralph-tickets-1"]);
         assert_eq!(run_dir_arg(&ok), Some("logs/ralph-tickets-1"));
@@ -167,7 +268,13 @@ mod tests {
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var("TERAX_TERMINAL", "1");
         let a = args(&["-y", "--run-dir", "logs/r1"]);
-        start(repo.path(), &a, "setsid ralph/run-ralph-tickets.sh -y").unwrap();
+        start(
+            repo.path(),
+            &a,
+            "setsid ralph/run-ralph-tickets.sh -y",
+            None,
+        )
+        .unwrap();
         let seen = repo.path().join("seen.txt");
         for _ in 0..100 {
             if seen.is_file() && fs::metadata(&seen).map(|m| m.len() > 0).unwrap_or(false) {
@@ -188,10 +295,10 @@ mod tests {
     fn a_start_is_refused_without_the_script_or_without_a_run_folder() {
         let repo = tempfile::tempdir().unwrap();
         let ok = args(&["-y", "--run-dir", "logs/r1"]);
-        assert!(start(repo.path(), &ok, "")
+        assert!(start(repo.path(), &ok, "", None)
             .unwrap_err()
             .contains("not found"));
-        assert!(start(repo.path(), &args(&["--run-dir", "logs/r1"]), "").is_err());
-        assert!(start(repo.path(), &args(&["-y"]), "").is_err());
+        assert!(start(repo.path(), &args(&["--run-dir", "logs/r1"]), "", None).is_err());
+        assert!(start(repo.path(), &args(&["-y"]), "", None).is_err());
     }
 }

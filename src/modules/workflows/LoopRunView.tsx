@@ -1,8 +1,14 @@
 import { Button } from "@/components/ui/button";
-import { IS_LINUX } from "@/lib/platform";
+import { IS_LINUX, IS_WINDOWS } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { markTicketDone, startLoop, stopLoop } from "./lib/api";
+import {
+  markTicketDone,
+  startLoop,
+  stopLoop,
+  wslCheck,
+  wslDistro,
+} from "./lib/api";
 import { isDoneStatus, unblockedBy, unblockedText } from "./lib/humanTicket";
 import {
   DEFAULT_LAUNCH,
@@ -15,6 +21,7 @@ import {
   startBlockedBy,
   startButtonLabel,
 } from "./lib/loopLaunch";
+import { loopStartProblem } from "./lib/wsl";
 import { LoopLaunchForm } from "./LoopLaunchForm";
 import { TicketTerminalArea, type TicketTerminalsApi } from "./TicketTerminals";
 import {
@@ -89,7 +96,10 @@ export function LoopRunView({
     ? {
         featureFolder: relativeTo(launch.repoRoot, launch.featureDir),
         runDir: runDirFor(new Date(now)),
-        caffeinate: IS_LINUX ? "app" : "script",
+        caffeinate: IS_LINUX || IS_WINDOWS ? "app" : "script",
+        wsl: wslDistro()
+          ? { distro: wslDistro() as string, linuxRoot: launch.repoRoot }
+          : null,
       }
     : null;
   const start = () => {
@@ -102,22 +112,35 @@ export function LoopRunView({
     };
     setStarting(true);
     setFailure(null);
-    startLoop(
-      launch.repoRoot,
-      launchArgs(options, fresh),
-      launchLine(options, fresh),
-    ).then(
-      () => {
-        setStarting(false);
-        setFormOpen(false);
-        setClosed((c) => (c ? { ...c, unblocked: [] } : c));
-        launch.onStarted();
-      },
-      (e) => {
-        setStarting(false);
-        setFailure(String(e));
-      },
-    );
+    // On Windows the distro check runs before the Loop starts: a missing tool is named with its
+    // install line, and nothing is started.
+    const distro = wslDistro();
+    const checked: Promise<void> = distro
+      ? wslCheck(distro).then((out) => {
+          const problem = loopStartProblem(distro, out);
+          if (problem) throw problem;
+        })
+      : Promise.resolve();
+    checked
+      .then(() =>
+        startLoop(
+          launch.repoRoot,
+          launchArgs(options, fresh),
+          launchLine(options, fresh),
+        ),
+      )
+      .then(
+        () => {
+          setStarting(false);
+          setFormOpen(false);
+          setClosed((c) => (c ? { ...c, unblocked: [] } : c));
+          launch.onStarted();
+        },
+        (e) => {
+          setStarting(false);
+          setFailure(String(e));
+        },
+      );
   };
   const markDone = async (t: TicketRow) => {
     if (!launch) throw new Error("no feature folder");

@@ -15,6 +15,21 @@ pub fn check_args(distro: &str) -> Vec<String> {
         .collect()
 }
 
+/// The tools of `REQUIRED_TOOLS` that `command -v` printed no path for (the same reading as the
+/// page's `missingTools`).
+pub fn missing_tools(output: &str) -> Vec<&'static str> {
+    let found: Vec<&str> = output
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .map(|l| l.rsplit('/').next().unwrap_or(l))
+        .collect();
+    REQUIRED_TOOLS
+        .into_iter()
+        .filter(|t| !found.contains(t))
+        .collect()
+}
+
 /// `wsl.exe` arguments that run a gate's shell command in `linux_root` inside the distro.
 pub fn run_args(distro: &str, linux_root: &str, command: &str) -> Vec<String> {
     ["-d", distro, "--cd", linux_root, "--", "sh", "-c", command]
@@ -58,6 +73,16 @@ mod tests {
             check_args("Ubuntu").join(" "),
             "-d Ubuntu -- command -v jq git curl claude"
         );
+    }
+
+    #[test]
+    fn a_tool_with_no_printed_path_is_missing() {
+        assert!(missing_tools(
+            "/usr/bin/jq\r\n/usr/bin/git\n/usr/bin/curl\n/home/me/.local/bin/claude\n"
+        )
+        .is_empty());
+        assert_eq!(missing_tools("/usr/bin/git\n"), ["jq", "curl", "claude"]);
+        assert_eq!(missing_tools(""), REQUIRED_TOOLS);
     }
 
     #[test]

@@ -37,6 +37,14 @@ describe("launchArgs and launchLine", () => {
     );
   });
 
+  it("on WSL the line starts wsl.exe in the distro and the repo's Linux path, then setsid", () => {
+    const wsl = { distro: "Ubuntu-24.04", linuxRoot: "/home/me/my app" };
+    expect(launchLine(opts(), { ...ctx, caffeinate: "app", wsl })).toBe(
+      "wsl.exe -d Ubuntu-24.04 --cd '/home/me/my app' -- setsid ralph/run-ralph-tickets.sh -y --issues-dir .scratch/demo --run-dir logs/ralph-tickets-20261103-143625",
+    );
+    expect(launchLine(opts(), { ...ctx, wsl: null })).toMatch(/^setsid /);
+  });
+
   it("adds what to run, branch, model, quota and failure flags in the form's order", () => {
     const line = launchLine(
       opts({

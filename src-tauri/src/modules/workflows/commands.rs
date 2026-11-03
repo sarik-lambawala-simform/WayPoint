@@ -228,6 +228,14 @@ pub async fn workflows_loop_live(repo_root: String) -> Vec<LiveRun> {
     .unwrap_or_default()
 }
 
+/// Where a Windows start runs: the space's distro and the repo's Linux path.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WslTarget {
+    pub distro: String,
+    pub linux_root: String,
+}
+
 /// Starts the script detached in the repo root. `args` and `launch_line` are what the launch form
 /// showed; the repo having a live run refuses the start.
 #[tauri::command]
@@ -235,9 +243,25 @@ pub async fn workflows_loop_start(
     repo_root: String,
     args: Vec<String>,
     launch_line: String,
+    wsl: Option<WslTarget>,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        launch::start(&PathBuf::from(repo_root), &args, &launch_line)
+        let Some(target) = wsl else {
+            return launch::start(&PathBuf::from(repo_root), &args, &launch_line, None);
+        };
+        // The distro check comes first: a tool the script needs and the distro lacks is named
+        // here, before any run folder is made.
+        crate::modules::workspace::validate_wsl_distro_name(&target.distro)?;
+        let printed = super::wsl::check_distro(&target.distro)?;
+        let missing = super::wsl::missing_tools(&printed);
+        if !missing.is_empty() {
+            return Err(format!("{} lacks {}.", target.distro, missing.join(", ")));
+        }
+        let wsl = launch::Wsl {
+            distro: &target.distro,
+            linux_root: &target.linux_root,
+        };
+        launch::start(&PathBuf::from(repo_root), &args, &launch_line, Some(&wsl))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -269,15 +293,20 @@ pub fn workflows_loop_watch(
     repo_root: String,
     feature_dir: String,
     feature: String,
+    poll: Option<bool>,
     on_view: tauri::ipc::Channel<LoopView>,
 ) -> Result<u32, String> {
     let (repo, dir) = (PathBuf::from(&repo_root), PathBuf::from(&feature_dir));
     if !repo.is_absolute() || !dir.is_absolute() {
         return Err("the repo and feature paths must be absolute".into());
     }
-    Ok(watch_loop(repo, dir, feature, move |view| {
-        on_view.send(view).is_ok()
-    }))
+    Ok(watch_loop(
+        repo,
+        dir,
+        feature,
+        poll.unwrap_or(false),
+        move |view| on_view.send(view).is_ok(),
+    ))
 }
 
 /// What a ticket's terminal replays from a run folder, from `offset` on.

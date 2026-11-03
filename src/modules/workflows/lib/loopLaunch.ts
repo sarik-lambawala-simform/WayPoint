@@ -58,6 +58,8 @@ export type LaunchContext = {
   runDir: string;
   /** Who holds the machine awake: the script's `caffeinate` (macOS) or the app (Linux). */
   caffeinate: "script" | "app";
+  /** On Windows the script runs in the space's distro, started through `wsl.exe`. */
+  wsl?: { distro: string; linuxRoot: string } | null;
 };
 
 /** The arguments after the script: the three the app always passes, then the form's flags. */
@@ -109,7 +111,13 @@ export function shellQuote(s: string): string {
 
 /** The command the app starts, as a shell would read it. */
 export function launchLine(o: LaunchOptions, ctx: LaunchContext): string {
-  return ["setsid", SCRIPT, ...launchArgs(o, ctx).map(shellQuote)].join(" ");
+  const script = ["setsid", SCRIPT, ...launchArgs(o, ctx).map(shellQuote)];
+  const via = ctx.wsl
+    ? ["wsl.exe", "-d", ctx.wsl.distro, "--cd", ctx.wsl.linuxRoot, "--"].map(
+        shellQuote,
+      )
+    : [];
+  return [...via, ...script].join(" ");
 }
 
 const LIST = /^[0-9\s,;\-[\]]*$/;

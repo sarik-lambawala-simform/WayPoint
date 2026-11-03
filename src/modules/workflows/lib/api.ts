@@ -18,7 +18,7 @@ export function wslDistro(): string | null {
   return IS_WINDOWS && env.kind === "wsl" ? env.distro : null;
 }
 
-const hostOf = (path: string): string => {
+export const hostOf = (path: string): string => {
   const distro = wslDistro();
   return distro ? wslHostPath(distro, path) : path;
 };
@@ -245,16 +245,26 @@ export const wslCheck = (distro: string) =>
 
 /** The live runs of a repo, whatever feature each works on. */
 export const loopLive = (repoRoot: string) =>
-  invoke<LiveRun[]>("workflows_loop_live", { repoRoot });
+  invoke<LiveRun[]>("workflows_loop_live", { repoRoot: hostOf(repoRoot) });
 
-/** Starts the script detached in the repo root; rejects with why it could not. */
-export const startLoop = (repoRoot: string, args: string[], line: string) =>
-  invoke<void>("workflows_loop_start", {
-    repoRoot,
+/**
+ * Starts the script detached in the repo root; rejects with why it could not. On Windows the
+ * script runs in the space's distro: Rust reads the run folder through the share path and launches
+ * `wsl.exe` in the repo's Linux path.
+ */
+export const startLoop = (repoRoot: string, args: string[], line: string) => {
+  const distro = wslDistro();
+  return invoke<void>("workflows_loop_start", {
+    repoRoot: hostOf(repoRoot),
     args,
     launchLine: line,
+    wsl: distro ? { distro, linuxRoot: repoRoot } : null,
   });
+};
 
 /** Writes the stop file of a live run (never a signal); resolves with the file's path. */
 export const stopLoop = (repoRoot: string, runId: string) =>
-  invoke<string>("workflows_loop_stop", { repoRoot, runId });
+  invoke<string>("workflows_loop_stop", {
+    repoRoot: hostOf(repoRoot),
+    runId,
+  });

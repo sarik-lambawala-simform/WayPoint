@@ -82,3 +82,13 @@ export const MNT_WARNING =
 export function repoLocationWarning(linuxRoot: string): string | null {
   return isMntPath(linuxRoot) ? MNT_WARNING : null;
 }
+
+/** Why the Loop cannot start in `distro`: each missing tool with the line that installs it, or null. */
+export function loopStartProblem(
+  distro: string,
+  checkOutput: string,
+): string | null {
+  const missing = missingWithInstall(checkOutput);
+  if (!missing.length) return null;
+  return `${distro} lacks ${missing.map((m) => `${m.tool} (${m.install})`).join("; ")}.`;
+}

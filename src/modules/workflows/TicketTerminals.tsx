@@ -12,6 +12,7 @@ import {
 } from "@/modules/terminal";
 import { TerminalPane } from "@/modules/terminal/TerminalPane";
 import { launchClaude } from "./launchClaude";
+import { hostOf } from "./lib/api";
 import { isDoneStatus, workBlockedBy } from "./lib/humanTicket";
 import type { LiveRun } from "./lib/loopLaunch";
 import type { RunView, TicketRow } from "./lib/loopRun";
@@ -242,7 +243,7 @@ function TicketReplay({
       let latestRead: TicketRead | null = null;
       for (let i = 0; i < MAX_READS && live; i++) {
         const next = await invoke<TicketRead | null>("workflows_ticket_read", {
-          repoRoot,
+          repoRoot: hostOf(repoRoot),
           runId,
           feature,
           number,
@@ -517,7 +518,11 @@ function RunPicker({
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh stands for the newest run's state it is built from
   useEffect(() => {
     let live = true;
-    invoke<RunView[]>("workflows_ticket_runs", { repoRoot, feature, number })
+    invoke<RunView[]>("workflows_ticket_runs", {
+      repoRoot: hostOf(repoRoot),
+      feature,
+      number,
+    })
       .then((r) => live && setRuns(r))
       .catch(() => live && setRuns([]));
     return () => {
@@ -600,7 +605,7 @@ function TicketCommits({
     (async () => {
       const window = await invoke<TicketWindow | null>(
         "workflows_ticket_window",
-        { repoRoot, runId, feature, number },
+        { repoRoot: hostOf(repoRoot), runId, feature, number },
       );
       if (!window?.completed || !window.base_sha) return;
       const log = await native.gitLog(repoRoot, { limit: 200 });
