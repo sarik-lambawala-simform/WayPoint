@@ -32,6 +32,13 @@ const RUN_DIR = "logs/run-a";
 const runDir = () => join(repo, RUN_DIR);
 const beat = () => join(runDir(), "heartbeat");
 const mtime = () => statSync(beat()).mtimeMs;
+/** The file stops changing: no touch over several beats once `settle` ms have passed. */
+async function expectBeatStopped(settle = 100) {
+  await sleep(settle);
+  const after = mtime();
+  await sleep(700);
+  expect(mtime()).toBe(after);
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function start(env: Record<string, string> = {}) {
@@ -65,7 +72,7 @@ describe("heartbeat", () => {
     await run.ended;
   });
 
-  test("the default beat is 5 s", async () => {
+  test("it does not beat faster than the 5 s default", async () => {
     const run = startScript(repo, ["--run-dir", RUN_DIR], {
       RALPH_STOP_POLL: "0.1",
       FAKE_CLAUDE_DELAY: "0.3",
@@ -82,10 +89,7 @@ describe("heartbeat", () => {
   test("the file stops changing when the run finishes", async () => {
     const end = await start({ FAKE_CLAUDE_DELAY: "0" }).ended;
     expect(end.code, end.stderr).toBe(0);
-    await sleep(100);
-    const after = mtime();
-    await sleep(700);
-    expect(mtime()).toBe(after);
+    await expectBeatStopped();
   });
 
   test("the loop ends on a failed ticket", async () => {
@@ -95,10 +99,7 @@ describe("heartbeat", () => {
       FAKE_CLAUDE_DELAY: "0",
     }).ended;
     expect(end.code).not.toBe(0);
-    await sleep(100);
-    const after = mtime();
-    await sleep(700);
-    expect(mtime()).toBe(after);
+    await expectBeatStopped();
   });
 
   test("the loop ends on a stop file", async () => {
@@ -107,10 +108,7 @@ describe("heartbeat", () => {
     writeFileSync(join(runDir(), "stop"), "");
     const end = await run.ended;
     expect(end.code, end.stderr).toBe(0);
-    await sleep(100);
-    const after = mtime();
-    await sleep(700);
-    expect(mtime()).toBe(after);
+    await expectBeatStopped();
   });
 
   test("the loop ends within a beat of a kill -9", async () => {
@@ -120,9 +118,6 @@ describe("heartbeat", () => {
     // Not `run.ended`: it waits for the pipes, which the orphaned fake claude holds.
     await new Promise((r) => run.child.once("exit", r));
     // One more beat may land before the loop sees the script gone.
-    await sleep(600);
-    const after = mtime();
-    await sleep(700);
-    expect(mtime()).toBe(after);
+    await expectBeatStopped(600);
   });
 });

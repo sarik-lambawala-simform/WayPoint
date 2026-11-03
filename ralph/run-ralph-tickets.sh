@@ -753,9 +753,6 @@ set_phase() {  # $1 = phase
   write_state "$now"
 }
 
-# Runs on every way out the shell takes: a normal end, an early `exit`, and the
-# `exit 130` a signal ends in. `|| true`, so a failed write cannot change the
-# exit code it is recording.
 # --- heartbeat -----------------------------------------------------------------
 # <run-dir>/heartbeat is touched every RALPH_HEARTBEAT_SECS (5) while the script
 # lives, so an app can tell a live run from a dead one on every OS, where a pid
@@ -785,6 +782,9 @@ stop_heartbeat() {
   HEARTBEAT_PID=""
 }
 
+# Runs on every way out the shell takes: a normal end, an early `exit`, and the
+# `exit 130` a signal ends in. `|| true`, so a failed write cannot change the
+# exit code it is recording.
 on_exit() {  # $1 = the exit code
   stop_heartbeat
   STATE_EXIT_CODE="$1"
