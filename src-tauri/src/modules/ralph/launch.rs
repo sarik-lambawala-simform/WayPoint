@@ -5,15 +5,23 @@
 //! a reopen, and spawns `ralph/run-ralph-tickets.sh` in its own session so it outlives the app.
 //! The command is built by a pure function, so a test reads the environment it would spawn with.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::SystemTime;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 
 use super::runs::{live_runs, script_alive, Env, LAUNCH_LINE_FILE};
 
 /// The script, relative to the repo root where it runs.
 pub const SCRIPT: &str = "ralph/run-ralph-tickets.sh";
+
+/// How long after a start the script has to show a state file; a start inside it is refused.
+const SETTLE: Duration = Duration::from_secs(15);
+
+static RECENT: LazyLock<Mutex<HashMap<PathBuf, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The value of `--run-dir` among `args`, when it names a folder under `logs/` that stays inside
 /// the repo (a relative path with no `..`).
@@ -67,7 +75,7 @@ pub fn start(repo_root: &Path, args: &[String], launch_line: &str) -> Result<(),
         .ok_or_else(|| "The run folder must be a new folder under logs/.".to_string())?;
     let script = repo_root.join(SCRIPT);
     if !script.is_file() {
-        return Err(format!("{} was not found in the repo root.", SCRIPT));
+        return Err(format!("{SCRIPT} was not found in the repo root."));
     }
     let env = Env {
         now: SystemTime::now(),
@@ -77,12 +85,33 @@ pub fn start(repo_root: &Path, args: &[String], launch_line: &str) -> Result<(),
         return Err(format!("{} already has a live run.", live.feature));
     }
     let folder: PathBuf = repo_root.join(run_dir);
+    if folder.exists() {
+        return Err(format!("{run_dir} already exists."));
+    }
+    // The script writes its state only after it starts, so a second start in that gap would see no
+    // live run; refuse one that follows too closely.
+    {
+        let mut recent = RECENT.lock().map_err(|e| e.to_string())?;
+        let now = Instant::now();
+        recent.retain(|_, at| now.duration_since(*at) < SETTLE);
+        if recent.contains_key(repo_root) {
+            return Err("A run was started a moment ago.".to_string());
+        }
+        recent.insert(repo_root.to_path_buf(), now);
+    }
     fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     fs::write(folder.join(LAUNCH_LINE_FILE), launch_line)
         .map_err(|e| format!("{}: {e}", folder.display()))?;
-    let mut child = detached_command(repo_root, args)
-        .spawn()
-        .map_err(|e| format!("could not start {SCRIPT}: {e}"))?;
+    let mut child = match detached_command(repo_root, args).spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&folder);
+            if let Ok(mut recent) = RECENT.lock() {
+                recent.remove(repo_root);
+            }
+            return Err(format!("could not start {SCRIPT}: {e}"));
+        }
+    };
     // Reaped off-thread so the finished script does not stay a zombie while the app runs.
     std::thread::spawn(move || {
         let _ = child.wait();

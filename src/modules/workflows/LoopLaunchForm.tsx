@@ -15,6 +15,8 @@ type Props = {
   ctx: LaunchContext;
   /** Why starting is off (another feature's run, a failed start); null when it can start. */
   blocked: string | null;
+  /** Why the last start failed; shown, and does not stop another try. */
+  failure: string | null;
   starting: boolean;
   onStart: () => void;
   onCancel: () => void;
@@ -93,6 +95,7 @@ export function LoopLaunchForm({
   onChange,
   ctx,
   blocked,
+  failure,
   starting,
   onStart,
   onCancel,
@@ -270,9 +273,9 @@ export function LoopLaunchForm({
           <Button size="xs" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          {blocked && (
+          {(blocked ?? failure) && (
             <span className="text-xs text-destructive" data-testid="blocked">
-              {blocked}
+              {blocked ?? failure}
             </span>
           )}
         </div>

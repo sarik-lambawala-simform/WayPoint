@@ -40,15 +40,29 @@ fn state() -> &'static Mutex<State> {
 /// A watch (`id`) says whether the run it sees is live; an ended watch reports false.
 pub fn report(id: u32, live: bool) {
     let Ok(mut s) = state().lock() else { return };
-    let changed = if live {
-        s.live.insert(id)
+    if live {
+        s.live.insert(id);
     } else {
-        s.live.remove(&id)
-    };
-    if changed {
-        apply(&mut s);
+        s.live.remove(&id);
+    }
+    reap(&mut s);
+    apply(&mut s);
+}
+
+/// The parent-death signal follows the thread that spawned the hold, so it can end while the app
+/// lives; a hold that is gone is dropped here and taken again by `apply`.
+#[cfg(target_os = "linux")]
+fn reap(s: &mut State) {
+    if s.child
+        .as_mut()
+        .is_some_and(|c| !matches!(c.try_wait(), Ok(None)))
+    {
+        s.child = None;
     }
 }
+
+#[cfg(not(target_os = "linux"))]
+fn reap(_s: &mut State) {}
 
 #[cfg(target_os = "linux")]
 fn apply(s: &mut State) {

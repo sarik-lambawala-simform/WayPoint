@@ -167,7 +167,8 @@ export function LoopRunView({
           options={options}
           onChange={setOptions}
           ctx={ctx}
-          blocked={failure ?? blocked}
+          blocked={blocked}
+          failure={failure}
           starting={starting}
           onStart={start}
           onCancel={() => {
