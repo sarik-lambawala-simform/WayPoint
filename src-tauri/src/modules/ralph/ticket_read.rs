@@ -74,6 +74,10 @@ pub fn read_outcome(tsv: &Path, number: &str) -> Option<TicketOutcome> {
 
 /// Reads `file` from `offset` to the last newline, at most `MAX_CHUNK` bytes.
 fn read_lines_from(file: &Path, offset: u64) -> Option<(String, u64, bool)> {
+    // A symlink in a run folder is not followed out of it.
+    if !fs::symlink_metadata(file).ok()?.is_file() {
+        return None;
+    }
     let mut f = File::open(file).ok()?;
     let len = f.metadata().ok()?.len();
     let (start, reset) = if offset > len {
@@ -85,7 +89,12 @@ fn read_lines_from(file: &Path, offset: u64) -> Option<(String, u64, bool)> {
     let mut buf = Vec::new();
     f.take(MAX_CHUNK).read_to_end(&mut buf).ok()?;
     // Hold back a line the script is still writing.
-    let end = buf.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+    // A line longer than a whole read is sent in pieces rather than waited on for ever.
+    let end = match buf.iter().rposition(|b| *b == b'\n') {
+        Some(i) => i + 1,
+        None if buf.len() as u64 >= MAX_CHUNK => buf.len(),
+        None => 0,
+    };
     buf.truncate(end);
     Some((
         String::from_utf8_lossy(&buf).into_owned(),
@@ -119,8 +128,11 @@ pub fn read_ticket(
         return none;
     };
     let stream = sub.join(format!("ticket-{number}.jsonl"));
-    let prompt = fs::read_to_string(sub.join(format!("ticket-{number}.prompt.txt")))
+    let prompt_file = sub.join(format!("ticket-{number}.prompt.txt"));
+    let prompt = fs::symlink_metadata(&prompt_file)
         .ok()
+        .filter(|m| m.is_file() && m.len() <= MAX_CHUNK)
+        .and_then(|_| fs::read_to_string(&prompt_file).ok())
         .map(|p| p.trim_end_matches('\n').to_string());
     let outcome = read_outcome(&sub.join("tickets.tsv"), number);
     match read_lines_from(&stream, offset) {

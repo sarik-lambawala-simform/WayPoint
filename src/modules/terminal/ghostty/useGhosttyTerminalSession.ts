@@ -291,7 +291,13 @@ export function markGhosttyDisplayLeaf(leafId: number): void {
 export async function whenGhosttyDisplayReady(
   leafId: number,
 ): Promise<boolean> {
-  const session = sessions.get(leafId);
+  // The pane creates the session when it mounts, which may be just after the caller asks.
+  const deadline = Date.now() + 4_000;
+  let session = sessions.get(leafId);
+  while (!session && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 10));
+    session = sessions.get(leafId);
+  }
   if (!session) return false;
   await session.initializing;
   return !!session.model && !session.startupError && !session.disposed;

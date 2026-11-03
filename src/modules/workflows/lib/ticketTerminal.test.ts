@@ -57,10 +57,10 @@ describe("ticketPhase", () => {
       ),
     ).toEqual({ kind: "blocked", by: ["01", "02"] });
   });
-  it("leaves a blocked ticket marked once the run has finished or died", () => {
+  it("leaves a blocked ticket marked once the run has finished, and says a died run died", () => {
     const t = ticket({ blockers: ["01"], blockers_met: false });
     expect(ticketPhase(t, run("finished"), false).kind).toBe("left");
-    expect(ticketPhase(t, run("died"), false).kind).toBe("left");
+    expect(ticketPhase(t, run("died"), false).kind).toBe("died-before");
   });
   it("has taken a ticket whose stream exists, and never a human one", () => {
     expect(ticketPhase(ticket(), run("finished"), true).kind).toBe("ran");

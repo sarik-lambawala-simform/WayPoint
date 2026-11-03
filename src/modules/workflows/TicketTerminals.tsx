@@ -163,7 +163,18 @@ function TicketReplay({
     if (a.runId !== runId) {
       acc.current = { runId, read: null, body: "", offset: 0 };
     }
+    let busy = false;
     const tick = async () => {
+      // A read still in flight owns the offset; the next interval waits for it.
+      if (busy) return;
+      busy = true;
+      try {
+        await read();
+      } finally {
+        busy = false;
+      }
+    };
+    const read = async () => {
       if (!runId) {
         acc.current.read = null;
         apply();

@@ -31,6 +31,7 @@ export type TicketPhase =
   | { kind: "ran" }
   | { kind: "done-before" }
   | { kind: "left" }
+  | { kind: "died-before" }
   | { kind: "not-taken" };
 
 const DONE_KEYS = new Set(["completed", "resolved", "done"]);
@@ -54,7 +55,8 @@ export function ticketPhase(
       ? { kind: "blocked", by: ticket.blockers }
       : { kind: "waiting" };
   }
-  return blocked ? { kind: "left" } : { kind: "not-taken" };
+  if (!blocked) return { kind: "not-taken" };
+  return run.status === "died" ? { kind: "died-before" } : { kind: "left" };
 }
 
 /** The note on a ticket the finished run never took. */
@@ -87,6 +89,8 @@ export function phaseNote(
       return `Ticket ${ticket.number} is ${ticket.status}; the newest run did not take it.`;
     case "left":
       return LEFT_NOTE;
+    case "died-before":
+      return "The run died before taking this ticket.";
     case "not-taken":
       return "The newest run did not take this ticket.";
     case "ran":
