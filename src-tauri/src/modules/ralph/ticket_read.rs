@@ -152,6 +152,60 @@ pub fn read_ticket(
     }
 }
 
+/// What a finished ticket's commits are looked up from: the commit the script started the ticket
+/// at (it names it in the prompt as the review's fixed point), and when the stream last grew.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct TicketWindow {
+    pub base_sha: Option<String>,
+    /// Unix ms of the stream's last write: the ticket's commits are not newer than this.
+    pub ended_ms: Option<i64>,
+    /// The script recorded the ticket `completed`.
+    pub completed: bool,
+}
+
+/// The sha the prompt names as the fixed point: ``use `<sha>` as the fixed point``.
+pub fn base_sha_of(prompt: &str) -> Option<String> {
+    let end = prompt.find("` as the fixed point")?;
+    let start = prompt[..end].rfind('`')? + 1;
+    let sha = &prompt[start..end];
+    ((7..=64).contains(&sha.len()) && sha.chars().all(|c| c.is_ascii_hexdigit()))
+        .then(|| sha.to_ascii_lowercase())
+}
+
+pub fn ticket_window(repo_root: &Path, run_id: &str, feature: &str, number: &str) -> TicketWindow {
+    let none = TicketWindow {
+        base_sha: None,
+        ended_ms: None,
+        completed: false,
+    };
+    if !plain_name(run_id) || !plain_name(feature) || !ticket_number(number) {
+        return none;
+    }
+    let run_dir: PathBuf = repo_root.join("logs").join(run_id);
+    let Some(sub) = feature_dir(&run_dir, feature) else {
+        return none;
+    };
+    let prompt_file = sub.join(format!("ticket-{number}.prompt.txt"));
+    let base_sha = fs::symlink_metadata(&prompt_file)
+        .ok()
+        .filter(|m| m.is_file() && m.len() <= MAX_CHUNK)
+        .and_then(|_| fs::read_to_string(&prompt_file).ok())
+        .and_then(|p| base_sha_of(&p));
+    let ended_ms = fs::symlink_metadata(sub.join(format!("ticket-{number}.jsonl")))
+        .ok()
+        .filter(|m| m.is_file())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64);
+    let completed =
+        read_outcome(&sub.join("tickets.tsv"), number).is_some_and(|o| o.outcome == "completed");
+    TicketWindow {
+        base_sha,
+        ended_ms,
+        completed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,5 +278,46 @@ mod tests {
         }
         assert!(!read_ticket(repo.path(), "ralph-tickets-1", "../feat", "03", 0).has_stream);
         assert!(!read_ticket(repo.path(), "ralph-tickets-1", "feat", "../3", 0).has_stream);
+    }
+
+    #[test]
+    fn the_base_sha_is_the_fixed_point_the_prompt_names() {
+        let p = "x\nWhen you run /code-review, use `A57FAEF40292` as the fixed point — y";
+        assert_eq!(base_sha_of(p).as_deref(), Some("a57faef40292"));
+        assert_eq!(base_sha_of("use `zzzzzzzz` as the fixed point"), None);
+        assert_eq!(base_sha_of("use `abc` as the fixed point"), None);
+        assert_eq!(base_sha_of("no such text"), None);
+    }
+
+    #[test]
+    fn a_window_has_the_base_the_stream_time_and_whether_it_completed() {
+        let (repo, sub) = run_folder();
+        fs::write(sub.join("ticket-03.jsonl"), "{}\n").unwrap();
+        fs::write(
+            sub.join("ticket-03.prompt.txt"),
+            "use `a57faef40292038884aa146e30d405498669ad47` as the fixed point",
+        )
+        .unwrap();
+        let w = ticket_window(repo.path(), "ralph-tickets-1", "feat", "03");
+        assert_eq!(
+            w.base_sha.as_deref(),
+            Some("a57faef40292038884aa146e30d405498669ad47")
+        );
+        assert!(w.ended_ms.is_some());
+        assert!(!w.completed);
+        fs::write(
+            sub.join("tickets.tsv"),
+            "03\tcompleted\t4\t0\t1\t2\t3\tT\t\n",
+        )
+        .unwrap();
+        assert!(ticket_window(repo.path(), "ralph-tickets-1", "feat", "03").completed);
+        assert_eq!(
+            ticket_window(repo.path(), "../x", "feat", "03"),
+            TicketWindow {
+                base_sha: None,
+                ended_ms: None,
+                completed: false
+            }
+        );
     }
 }

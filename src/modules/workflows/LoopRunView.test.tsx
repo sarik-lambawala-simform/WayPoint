@@ -200,8 +200,10 @@ describe("the Loop cell's chip", () => {
       select: () => {},
       openShell: () => {},
       showRun: () => {},
+      pickRun: () => {},
       onShellExit: () => {},
       repoRoot: "/r",
+      onOpenCommitFile: () => {},
     });
     const withTerminals = (selected: string | null) =>
       renderToStaticMarkup(

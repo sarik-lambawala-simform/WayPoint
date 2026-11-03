@@ -1,6 +1,8 @@
 // Which ticket terminals exist in the Loop, and which one is shown. A ticket's terminal is made the
 // first time the ticket is chosen and then stays mounted. Pure; leaf ids come from the caller.
 
+import type { RunView } from "./loopRun";
+
 export type OpenedTicket = {
   /** The display leaf that replays the run folder. No shell runs behind it. */
   replay: number;
@@ -8,6 +10,8 @@ export type OpenedTicket = {
   shell: number | null;
   /** The shell fills the area instead of the replay. */
   showShell: boolean;
+  /** An older run picked in the "Run:" picker; null replays the newest run. */
+  pickedRun: RunView | null;
 };
 
 export type TicketTerminals = {
@@ -25,6 +29,7 @@ export type TicketTerminalAction =
   | { type: "select"; number: string; replayLeaf: number }
   | { type: "open-shell"; number: string; leaf: number }
   | { type: "show-run"; number: string }
+  | { type: "pick-run"; number: string; run: RunView | null }
   | { type: "shell-exited"; leaf: number };
 
 export function reduceTicketTerminals(
@@ -43,6 +48,7 @@ export function reduceTicketTerminals(
                 replay: action.replayLeaf,
                 shell: null,
                 showShell: false,
+                pickedRun: null,
               },
             },
       };
@@ -70,6 +76,17 @@ export function reduceTicketTerminals(
         opened: {
           ...state.opened,
           [action.number]: { ...t, showShell: false },
+        },
+      };
+    }
+    case "pick-run": {
+      const t = state.opened[action.number];
+      if (!t) return state;
+      return {
+        ...state,
+        opened: {
+          ...state.opened,
+          [action.number]: { ...t, pickedRun: action.run, showShell: false },
         },
       };
     }

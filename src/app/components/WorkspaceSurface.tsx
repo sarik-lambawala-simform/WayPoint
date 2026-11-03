@@ -181,6 +181,7 @@ export function WorkspaceSurface({
           activeId={activeId}
           onTitle={onFeatureTitle}
           onOpenPath={onOpenFeaturePath}
+          onOpenCommitFile={onOpenCommitFile}
           onSwitchEnv={onSwitchEnv}
         />
       </div>

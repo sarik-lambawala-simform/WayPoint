@@ -7,9 +7,9 @@ use super::progress::{self, ProgressFile, ProgressRead, Update};
 use super::workflow::{shipped_workflow, Vars, Workflow};
 use crate::modules::ralph::launch;
 use crate::modules::ralph::runs::{
-    live_runs, read_loop_view, script_alive, Env, LiveRun, LoopView,
+    live_runs, read_loop_view, runs_for_ticket, script_alive, Env, LiveRun, LoopView, RunView,
 };
-use crate::modules::ralph::ticket_read::{read_ticket, TicketRead};
+use crate::modules::ralph::ticket_read::{read_ticket, ticket_window, TicketRead, TicketWindow};
 use crate::modules::ralph::tickets::read_tickets;
 use crate::modules::ralph::watch::{unwatch, watch_loop};
 
@@ -275,6 +275,48 @@ pub async fn workflows_ticket_read(
             return None;
         }
         Some(read_ticket(&repo, &run_id, &feature, &number, offset))
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// The runs of a feature that took a ticket, newest first, for the ticket terminal's "Run:" picker.
+#[tauri::command]
+pub async fn workflows_ticket_runs(
+    repo_root: String,
+    feature: String,
+    number: String,
+) -> Vec<RunView> {
+    tokio::task::spawn_blocking(move || {
+        let repo = PathBuf::from(repo_root);
+        if !repo.is_absolute() || number.len() != 2 || !number.bytes().all(|b| b.is_ascii_digit()) {
+            return Vec::new();
+        }
+        let env = Env {
+            now: std::time::SystemTime::now(),
+            pid_alive: &script_alive,
+        };
+        runs_for_ticket(&repo, &feature, &number, &env)
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Where a ticket's commits are looked up from, for one run.
+#[tauri::command]
+pub async fn workflows_ticket_window(
+    repo_root: String,
+    run_id: String,
+    feature: String,
+    number: String,
+) -> Option<TicketWindow> {
+    tokio::task::spawn_blocking(move || {
+        let repo = PathBuf::from(repo_root);
+        if !repo.is_absolute() {
+            return None;
+        }
+        Some(ticket_window(&repo, &run_id, &feature, &number))
     })
     .await
     .ok()

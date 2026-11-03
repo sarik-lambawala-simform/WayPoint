@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { native } from "@/modules/ai/lib/native";
+import type { GitCommitFileChange } from "@/modules/ai/lib/native";
+import { revealInFinder } from "@/modules/explorer/lib/contextActions";
 import {
   disposeSession,
   displayInSession,
@@ -10,6 +13,13 @@ import {
 import { TerminalPane } from "@/modules/terminal/TerminalPane";
 import type { RunView, TicketRow } from "./lib/loopRun";
 import { allocateStageLeaf } from "./lib/stageTerminals";
+import {
+  type LogEntry,
+  replayedRun,
+  runOptionLabel,
+  ticketCommits,
+  type TicketWindow,
+} from "./lib/ticketCommits";
 import {
   headText,
   ReplayWriter,
@@ -25,6 +35,16 @@ import {
   shownLeaf,
 } from "./lib/ticketTerminals";
 
+/** Opens one file of a commit in Terax's commit-file diff tab. */
+export type OpenCommitFile = (input: {
+  repoRoot: string;
+  sha: string;
+  shortSha: string;
+  subject: string;
+  path: string;
+  originalPath: string | null;
+}) => void;
+
 /** The most reads one catch-up makes, so a huge stream cannot hold the page. */
 const MAX_READS = 64;
 
@@ -33,7 +53,10 @@ const MAX_READS = 64;
  * mounted and keeps replaying while another is shown. Leaves are display leaves: they show the run
  * folder and never host the run. Returns what the list and the terminal area need.
  */
-export function useTicketTerminals(repoRoot: string) {
+export function useTicketTerminals(
+  repoRoot: string,
+  onOpenCommitFile: OpenCommitFile,
+) {
   const [state, dispatchRaw] = useReducer(
     reduceTicketTerminals,
     NO_TICKET_TERMINALS,
@@ -79,6 +102,11 @@ export function useTicketTerminals(repoRoot: string) {
     (number: string) => dispatch({ type: "show-run", number }),
     [dispatch],
   );
+  const pickRun = useCallback(
+    (number: string, run: RunView | null) =>
+      dispatch({ type: "pick-run", number, run }),
+    [dispatch],
+  );
   const onShellExit = useCallback(
     (leaf: number) => {
       disposeSession(leaf);
@@ -86,7 +114,16 @@ export function useTicketTerminals(repoRoot: string) {
     },
     [dispatch],
   );
-  return { state, select, openShell, showRun, onShellExit, repoRoot };
+  return {
+    state,
+    select,
+    openShell,
+    showRun,
+    pickRun,
+    onShellExit,
+    repoRoot,
+    onOpenCommitFile,
+  };
 }
 
 export type TicketTerminalsApi = ReturnType<typeof useTicketTerminals>;
@@ -242,6 +279,16 @@ export function TicketTerminalArea({
           <span className="min-w-0 flex-1 truncate" title={selected.name}>
             {selected.number} · {selected.title || selected.name}
           </span>
+          {!selected.human && (
+            <RunPicker
+              api={api}
+              number={selected.number}
+              feature={feature}
+              newest={run}
+              picked={opened.pickedRun}
+              shown={replayedRun(run, opened.pickedRun)}
+            />
+          )}
           {opened.showShell ? (
             <Button
               size="xs"
@@ -290,7 +337,7 @@ export function TicketTerminalArea({
                   <TicketReplay
                     leaf={leaf}
                     ticket={ticket}
-                    run={run}
+                    run={replayedRun(run, t.pickedRun)}
                     repoRoot={repoRoot}
                     feature={feature}
                   />
@@ -307,6 +354,187 @@ export function TicketTerminalArea({
           })}
         </div>
       </div>
+      {selected && !selected.human && (
+        <TicketCommits
+          api={api}
+          ticket={selected}
+          feature={feature}
+          run={replayedRun(run, opened?.pickedRun ?? null)}
+        />
+      )}
+    </div>
+  );
+}
+
+const SELECT_CLASS =
+  "h-6 max-w-56 min-w-0 rounded-md border border-border bg-background px-1.5 text-xs";
+
+/** "Run:" picker and the run folder's link, in a ticket terminal's header. */
+function RunPicker({
+  api,
+  number,
+  feature,
+  newest,
+  picked,
+  shown,
+}: {
+  api: TicketTerminalsApi;
+  number: string;
+  feature: string;
+  newest: RunView | null;
+  picked: RunView | null;
+  shown: RunView | null;
+}) {
+  const { repoRoot } = api;
+  const [runs, setRuns] = useState<RunView[]>([]);
+  const refresh = [
+    newest?.id,
+    newest?.status,
+    newest?.ticket,
+    newest?.tickets_ended,
+  ].join("|");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh stands for the newest run's state it is built from
+  useEffect(() => {
+    let live = true;
+    invoke<RunView[]>("workflows_ticket_runs", { repoRoot, feature, number })
+      .then((r) => live && setRuns(r))
+      .catch(() => live && setRuns([]));
+    return () => {
+      live = false;
+    };
+  }, [repoRoot, feature, number, refresh]);
+  if (runs.length === 0 || !shown) return null;
+  const newestId = runs[0].id;
+  const value = picked?.id ?? newest?.id ?? newestId;
+  return (
+    <>
+      <label className="flex items-center gap-1.5 text-muted-foreground">
+        Run:
+        <select
+          className={SELECT_CLASS}
+          value={value}
+          onChange={(e) => {
+            const id = e.target.value;
+            api.pickRun(
+              number,
+              id === newest?.id
+                ? null
+                : (runs.find((r) => r.id === id) ?? null),
+            );
+          }}
+        >
+          {runs.map((r) => (
+            <option key={r.id} value={r.id}>
+              {runOptionLabel(r, newest?.id ?? newestId)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        className="max-w-48 truncate text-xs text-primary underline-offset-2 hover:underline"
+        title={`Open ${shown.dir} in the file manager`}
+        onClick={() => void revealInFinder(shown.dir)}
+      >
+        {shown.id}
+      </button>
+    </>
+  );
+}
+
+type CommitView = { entry: LogEntry; files: GitCommitFileChange[] };
+
+/**
+ * A finished ticket's commits, the files each changed, and a click on a file to its diff in the
+ * commit-file diff tab. No whole-commit tab. Renders nothing until the run holds a completed ticket.
+ */
+function TicketCommits({
+  api,
+  ticket,
+  feature,
+  run,
+}: {
+  api: TicketTerminalsApi;
+  ticket: TicketRow;
+  feature: string;
+  run: RunView | null;
+}) {
+  const { repoRoot, onOpenCommitFile } = api;
+  const [commits, setCommits] = useState<CommitView[]>([]);
+  const runId = run?.id ?? null;
+  const number = ticket.number;
+  const key = [runId, run?.status, run?.tickets_ended, ticket.status].join("|");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: key stands for the run and ticket state it is built from
+  useEffect(() => {
+    let live = true;
+    setCommits([]);
+    if (!runId) return;
+    (async () => {
+      const window = await invoke<TicketWindow | null>(
+        "workflows_ticket_window",
+        { repoRoot, runId, feature, number },
+      );
+      if (!window?.completed || !window.base_sha) return;
+      const log = await native.gitLog(repoRoot, { limit: 200 });
+      const entries = ticketCommits(log, window);
+      const views = await Promise.all(
+        entries.map(async (entry) => ({
+          entry: entry as LogEntry,
+          files: await native.gitCommitFiles(repoRoot, entry.sha),
+        })),
+      );
+      if (live) setCommits(views);
+    })().catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [repoRoot, feature, number, runId, key]);
+  if (commits.length === 0) return null;
+  return (
+    <div className="max-h-40 shrink-0 overflow-auto border-t border-border/60 px-3 py-1.5 text-xs">
+      {commits.map(({ entry, files }) => (
+        <div key={entry.sha} className="mb-1.5 last:mb-0">
+          <div className="flex gap-2">
+            <code className="shrink-0 text-muted-foreground">
+              {entry.shortSha}
+            </code>
+            <span className="min-w-0 truncate" title={entry.subject}>
+              {entry.subject}
+            </span>
+          </div>
+          <ul className="ml-4">
+            {files.map((f) => (
+              <li key={f.path}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 text-left hover:underline"
+                  title={`Open the diff of ${f.path} in ${entry.shortSha}`}
+                  onClick={() =>
+                    onOpenCommitFile({
+                      repoRoot,
+                      sha: entry.sha,
+                      shortSha: entry.shortSha,
+                      subject: entry.subject,
+                      path: f.path,
+                      originalPath: f.originalPath,
+                    })
+                  }
+                >
+                  <span className="w-12 shrink-0 text-muted-foreground">
+                    {f.statusLabel}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{f.path}</span>
+                  {!f.isBinary && (
+                    <span className="shrink-0 text-muted-foreground">
+                      +{f.added} −{f.removed}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }

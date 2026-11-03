@@ -410,6 +410,30 @@ fn view_run(
     (view, rows)
 }
 
+/// The runs of `feature` that took ticket `number` (its stream is in the run folder), newest
+/// first: the list behind a ticket terminal's "Run:" picker. A symlink or a non-file in place of
+/// the stream does not count, as in `read_ticket`.
+pub fn runs_for_ticket(repo_root: &Path, feature: &str, number: &str, env: &Env) -> Vec<RunView> {
+    let logs = repo_root.join("logs");
+    run_dirs(&logs)
+        .into_iter()
+        .rev()
+        .filter_map(|dir| {
+            let sub = feature_dir(&dir, feature)?;
+            let stream = fs::symlink_metadata(sub.join(format!("ticket-{number}.jsonl"))).ok()?;
+            if !stream.is_file() {
+                return None;
+            }
+            let state = read_state(&dir);
+            Some(view_run(&dir, state.as_ref(), feature, env).0)
+        })
+        .take(MAX_TICKET_RUNS)
+        .collect()
+}
+
+/// The most runs a ticket's picker lists.
+const MAX_TICKET_RUNS: usize = 100;
+
 /// The newest run folder that belongs to `feature`: it holds the feature's `<NN>-<feature>` folder,
 /// or its state names the feature (a run that has just started).
 fn newest_run(logs: &Path, feature: &str) -> Option<(PathBuf, Option<RunState>)> {
@@ -677,6 +701,39 @@ mod tests {
             .unwrap();
         }
         feature
+    }
+
+    #[test]
+    fn a_ticket_lists_the_runs_that_took_it_newest_first() {
+        let repo = tempfile::tempdir().unwrap();
+        let logs = repo.path().join("logs");
+        let sub = |id: &str| write_run(&logs, id, "finished", "", "").join("01-demo");
+        // Name order is time order. r1 and r3 streamed ticket 02; r2 only ticket 05.
+        fs::write(sub("r1").join("ticket-02.jsonl"), "{}\n").unwrap();
+        fs::write(sub("r2").join("ticket-05.jsonl"), "{}\n").unwrap();
+        fs::write(sub("r3").join("ticket-02.jsonl"), "{}\n").unwrap();
+        // A folder of another feature, and a symlinked stream, do not count.
+        let other = logs.join("r4/01-other");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("ticket-02.jsonl"), "{}\n").unwrap();
+        let env = env_at(SystemTime::now());
+        let ids = |n: &str| -> Vec<String> {
+            runs_for_ticket(repo.path(), "demo", n, &env)
+                .into_iter()
+                .map(|r| r.id)
+                .collect()
+        };
+        assert_eq!(ids("02"), ["r3", "r1"]);
+        assert_eq!(ids("05"), ["r2"]);
+        assert!(ids("09").is_empty());
+        #[cfg(unix)]
+        {
+            let real = sub("r5").join("real.jsonl");
+            fs::write(&real, "{}\n").unwrap();
+            std::os::unix::fs::symlink(&real, sub("r5").join("ticket-07.jsonl")).unwrap();
+            assert!(ids("07").is_empty());
+        }
+        assert!(runs_for_ticket(repo.path(), "none", "02", &env).is_empty());
     }
 
     #[test]

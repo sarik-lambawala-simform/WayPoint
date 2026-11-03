@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { FeatureTab, Tab } from "@/modules/tabs";
 import type { WorkspaceEnv } from "@/modules/workspace";
-import { useEffect, useMemo } from "react";
+import { type ComponentProps, useEffect, useMemo } from "react";
 import { FeaturePane } from "./FeaturePane";
 import { disposeClosedFeatures } from "./useStageTerminals";
 
@@ -10,6 +10,7 @@ type Props = {
   activeId: number;
   onTitle: (id: number, title: string) => void;
   onOpenPath: (path: string) => void;
+  onOpenCommitFile: ComponentProps<typeof FeaturePane>["onOpenCommitFile"];
   /** Switches the active space's environment; only on an offer the user accepts. */
   onSwitchEnv: (env: WorkspaceEnv) => void;
 };
@@ -20,6 +21,7 @@ export function FeatureStack({
   activeId,
   onTitle,
   onOpenPath,
+  onOpenCommitFile,
   onSwitchEnv,
 }: Props) {
   const features = useMemo(
@@ -44,6 +46,7 @@ export function FeatureStack({
             active={t.id === activeId}
             onTitle={(title) => onTitle(t.id, title)}
             onOpenPath={onOpenPath}
+            onOpenCommitFile={onOpenCommitFile}
             onSwitchEnv={onSwitchEnv}
           />
         </div>

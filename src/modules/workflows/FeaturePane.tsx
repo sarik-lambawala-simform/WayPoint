@@ -36,7 +36,7 @@ import { Button } from "@/components/ui/button";
 import { IS_WINDOWS } from "@/lib/platform";
 import type { WorkspaceEnv } from "@/modules/workspace";
 import { LoopRunView } from "./LoopRunView";
-import { useTicketTerminals } from "./TicketTerminals";
+import { type OpenCommitFile, useTicketTerminals } from "./TicketTerminals";
 import { RoutePicker } from "./RoutePicker";
 import { StageBar } from "./StageBar";
 import { StageHeader } from "./StageHeader";
@@ -70,6 +70,8 @@ type Props = {
   onTitle: (title: string) => void;
   /** Opens a produced file: `.md` in a markdown tab, anything else in an editor tab. */
   onOpenPath: (path: string) => void;
+  /** Opens one file of a commit in the commit-file diff tab. */
+  onOpenCommitFile: OpenCommitFile;
   /** Switches the space's environment; called only when the user accepts the offer. */
   onSwitchEnv: (env: WorkspaceEnv) => void;
 };
@@ -81,6 +83,7 @@ export function FeaturePane({
   active,
   onTitle,
   onOpenPath,
+  onOpenCommitFile,
   onSwitchEnv,
 }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -114,6 +117,7 @@ export function FeaturePane({
       active={active}
       onTitle={onTitle}
       onOpenPath={onOpenPath}
+      onOpenCommitFile={onOpenCommitFile}
       onSwitchEnv={onSwitchEnv}
     />
   );
@@ -127,6 +131,7 @@ function LoadedPane({
   active,
   onTitle,
   onOpenPath,
+  onOpenCommitFile,
   onSwitchEnv,
 }: Props & { catalog: Catalog }) {
   const { state, record, refresh } = useFeatureProgress(
@@ -162,7 +167,7 @@ function LoadedPane({
     resolvedEntry?.workflow.stages.some((s) => s.run === "loop"),
   );
   const loopRun = useLoopRun(repoRoot, featureDir, feature, hasLoop);
-  const ticketTerminals = useTicketTerminals(repoRoot);
+  const ticketTerminals = useTicketTerminals(repoRoot, onOpenCommitFile);
   const [loopSeen, setLoopSeen] = useState(false);
   const forkStages: ForkStage[] = (resolvedEntry?.workflow.stages ?? []).map(
     (s) => ({
