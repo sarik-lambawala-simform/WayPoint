@@ -2,7 +2,7 @@ pub mod modules;
 
 #[cfg(target_os = "macos")]
 use modules::app_menu;
-use modules::workflows; // fork
+use modules::workflows; // fork: WayPoint module
 use modules::{
     agent, control, fs, git, history, lsp, net, pty, secrets, shell, vibrancy, workspace,
 };

@@ -185,7 +185,9 @@ export function useWorkflowsEntry({
     const json = JSON.stringify(entries);
     if (json === lastSaved.current) return;
     lastSaved.current = json;
-    void saveFeatures(entries);
+    saveFeatures(entries).catch((e) =>
+      console.error("[waypoint] saving feature tabs failed:", e),
+    );
   }, [tabs]);
 
   return {
