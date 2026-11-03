@@ -27,6 +27,7 @@ import {
 } from "./lib/forks";
 import {
   featureRel,
+  FRESH_WHY,
   freshNote,
   missingSessionInput,
   stageInput,
@@ -311,7 +312,7 @@ function LoadedPane({
     let forkFrom: string | null = null;
     let freshWhy: string | null = null;
     if (opts.fresh) {
-      freshWhy = "Started fresh: there was no earlier session to continue.";
+      freshWhy = FRESH_WHY;
     } else if (!unattendedStage) {
       const plan = forkPlan(
         forkStages,

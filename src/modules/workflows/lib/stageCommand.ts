@@ -32,8 +32,9 @@ export const unattendedLine = (command: string) =>
   `claude -p "${command.replace(/[\\"$`]/g, "\\$&")}"`;
 
 /** Typed before a stage that started fresh for want of a session to fork. Avoids the word the agent detector arms on. */
-export const freshNote = () =>
-  `echo "Started fresh: there was no earlier session to continue."`;
+export const FRESH_WHY =
+  "Started fresh: there was no earlier session to continue.";
+export const freshNote = () => `echo "${FRESH_WHY}"`;
 
 /** Several notes in one shell line. */
 export const joinNotes = (notes: (string | undefined)[]) =>
