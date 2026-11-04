@@ -140,7 +140,7 @@ jobs:
 
       - name: cargo nextest
         working-directory: src-tauri
-        run: cargo nextest run --locked
+        run: cargo nextest run --locked --no-fail-fast
 
       - name: fish shell integration
         run: fish --no-config src-tauri/src/modules/pty/scripts/init.test.fish
@@ -173,7 +173,7 @@ jobs:
 
       - name: cargo nextest
         working-directory: src-tauri
-        run: cargo nextest run --locked --retries 2
+        run: cargo nextest run --locked --retries 2 --no-fail-fast
 
   coverage:
     runs-on: ubuntu-22.04

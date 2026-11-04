@@ -42,12 +42,45 @@ pub enum Scope {
 /// `confirm`, `tickets`, `map`, or `check: "<shell>"`. Left out means "every `produces` entry
 /// matches a file".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase", try_from = "RawDoneWhen")]
 pub enum DoneWhen {
     Confirm,
     Tickets,
     Map,
     Check(String),
+}
+
+/// How `done_when` is written in YAML. `serde_norway` reads a derived enum's `Check` as a
+/// `!check` tag, not the `check:` map the files use, so the file shape is read here.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawDoneWhen {
+    Word(String),
+    Check(CheckDoneWhen),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckDoneWhen {
+    check: String,
+}
+
+impl TryFrom<RawDoneWhen> for DoneWhen {
+    type Error = String;
+
+    fn try_from(raw: RawDoneWhen) -> Result<Self, String> {
+        match raw {
+            RawDoneWhen::Word(w) => match w.as_str() {
+                "confirm" => Ok(Self::Confirm),
+                "tickets" => Ok(Self::Tickets),
+                "map" => Ok(Self::Map),
+                _ => Err(format!(
+                    "unknown done_when `{w}`, expected confirm, tickets, map or check: \"<shell>\""
+                )),
+            },
+            RawDoneWhen::Check(c) => Ok(Self::Check(c.check)),
+        }
+    }
 }
 
 /// Fields a route may override on a stage. Everything but `run` and `routes`.
@@ -560,6 +593,31 @@ mod tests {
     fn a_bad_enum_value_names_its_line() {
         let e = error_of("errors/bad-mode.yaml");
         assert_eq!(e.line, 6);
+    }
+
+    #[test]
+    fn done_when_reads_a_word_or_a_check_map_and_names_an_unknown_word() {
+        let stage = |done: &str| {
+            format!(
+                "version: 1\ntitle: T\nstages:\n  - name: A\n    skill: a\n    done_when: {done}\n"
+            )
+        };
+        let w = parse_workflow("x", "x.yaml", &stage("{ check: \"true\" }")).unwrap();
+        assert_eq!(w.stages[0].done_when, Some(DoneWhen::Check("true".into())));
+        let e = parse_workflow("x", "x.yaml", &stage("sometimes")).unwrap_err();
+        assert!(
+            e.message.contains("unknown done_when `sometimes`"),
+            "{}",
+            e.message
+        );
+        assert!(parse_workflow("x", "x.yaml", &stage("{ check: a, extra: b }")).is_err());
+    }
+
+    #[test]
+    fn done_when_serializes_to_the_shape_the_frontend_reads() {
+        let json = |d: DoneWhen| serde_json::to_string(&d).unwrap();
+        assert_eq!(json(DoneWhen::Confirm), "\"confirm\"");
+        assert_eq!(json(DoneWhen::Check("t".into())), "{\"check\":\"t\"}");
     }
 
     #[test]
