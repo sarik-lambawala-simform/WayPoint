@@ -110,10 +110,10 @@ hook commands unchanged, so this is left for a later ticket.
 
 ## Markdown tab fixes
 
-Marked `// fork:` and meant to go upstream as is: an open markdown tab reloads on `fs:changed`
+Marked `// fork:` and kept for good (nothing goes upstream): an open markdown tab reloads on `fs:changed`
 (`MarkdownPreviewPane`, with `useEditorFileSync` watching markdown paths) and relative `.md` links open in a
 new markdown tab (`MarkdownLink`, `MarkdownStack`, `WorkspaceSurface`, `App`, helpers in
-`src/modules/markdown/lib/markdownLinks.ts`). Drop them when an upstream tag includes them.
+`src/modules/markdown/lib/markdownLinks.ts`).
 
 ## Loop launch
 

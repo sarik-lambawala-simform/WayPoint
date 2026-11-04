@@ -11,7 +11,7 @@
   </p>
 </div>
 
-WayPoint is a fork of Terax (`crynta/terax-ai`, Apache-2.0). It keeps every Terax feature and tracks upstream release tags. The upstream project's documentation is kept under `docs/` and still describes Terax.
+WayPoint is a new application built from a fork of Terax (`crynta/terax-ai`, Apache-2.0). It keeps every Terax feature and does not follow Terax releases. The upstream project's documentation is kept under `docs/` and still describes Terax.
 
 ---
 
