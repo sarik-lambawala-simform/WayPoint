@@ -377,7 +377,7 @@ function LoadedPane({
         .then((ok) => ok && startShown({ ...opts, checked: true }));
       return;
     }
-    let firstMessage = input;
+    let typed = input;
     let forkFrom: string | null = null;
     let freshWhy: string | null = null;
     if (opts.fresh) {
@@ -399,7 +399,7 @@ function LoadedPane({
           setBlocked({ key: shown.key, kind: "missing", goBack: plan.goBack });
           return;
         }
-        firstMessage = fallback;
+        typed = fallback;
         freshWhy = "No session to continue: started from the spec instead.";
       } else if (plan.kind === "fork") {
         if (plan.midTurn && !opts.forkAnyway) {
@@ -427,7 +427,7 @@ function LoadedPane({
       );
     terminals.start({
       key,
-      input: firstMessage,
+      input: typed,
       unattended: unattendedStage,
       forkFrom,
       note: freshWhy ? freshNote() : undefined,

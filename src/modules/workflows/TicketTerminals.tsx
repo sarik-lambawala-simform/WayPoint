@@ -103,7 +103,7 @@ export function useTicketTerminals(
     },
     [dispatch],
   );
-  // "Work on this": a terminal of its own with an interactive claude whose first message is `/implement <path>`.
+  // "Work on this": a terminal of its own with an interactive claude typing `/implement <path>`.
   // A ticket has one; asking again only brings it back and types nothing.
   const work = useCallback(
     (number: string, ticketPath: string) => {
@@ -114,7 +114,8 @@ export function useTicketTerminals(
       void launchClaude(
         repoRoot,
         leaf,
-        freshLine(crypto.randomUUID(), workOnThisInput(ticketPath)),
+        freshLine(crypto.randomUUID()),
+        workOnThisInput(ticketPath),
       );
     },
     [dispatch, repoRoot],

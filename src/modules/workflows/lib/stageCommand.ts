@@ -1,4 +1,4 @@
-// The command lines a stage terminal runs and the first message a stage sends claude. Pure.
+// The command lines a stage terminal runs and the text a stage types into claude. Pure.
 
 import type { Stage } from "./api";
 import { normalizeRoot } from "./featurePaths";
@@ -13,32 +13,15 @@ function checkedId(id: string): string {
   return id;
 }
 
-/**
- * `text` after `--` (so a leading dash is never an option), as one single-quoted shell word:
- * nothing inside is expanded, `!` included, which bash and zsh expand even inside double quotes.
- * A carriage return would submit the typed line early, so it becomes a newline.
- */
-const withPrompt = (line: string, text?: string) =>
-  text
-    ? `${line} -- '${text.replace(/\r\n?/g, "\n").replace(/'/g, "'\\''")}'`
-    : line;
-
-/**
- * A fresh claude session of the app's own choosing. `input` (the stage's command) goes on the
- * command line as the first message, so nothing the user types first can land ahead of it.
- */
-export const freshLine = (id: string, input?: string) =>
-  withPrompt(`claude --session-id ${checkedId(id)}`, input);
+/** A fresh claude session of the app's own choosing. */
+export const freshLine = (id: string) => `claude --session-id ${checkedId(id)}`;
 
 /** The stage's own session again; nothing is typed afterwards. */
 export const resumeLine = (id: string) => `claude --resume ${checkedId(id)}`;
 
 /** A forked session: the previous stage's session, branched under a new id of the app's choosing. */
-export const forkLine = (fromId: string, newId: string, input?: string) =>
-  withPrompt(
-    `claude --resume ${checkedId(fromId)} --fork-session --session-id ${checkedId(newId)}`,
-    input,
-  );
+export const forkLine = (fromId: string, newId: string) =>
+  `claude --resume ${checkedId(fromId)} --fork-session --session-id ${checkedId(newId)}`;
 
 /** Typed into the shell before a re-run: the replaced session is kept, not deleted. It avoids the word the agent detector arms on. */
 export const rerunNote = (oldId: string) =>
@@ -46,7 +29,7 @@ export const rerunNote = (oldId: string) =>
 
 /** An unattended stage: one `claude -p` run whose exit ends the stage's turn. */
 export const unattendedLine = (command: string) =>
-  withPrompt("claude -p", command);
+  `claude -p "${command.replace(/[\\"$`]/g, "\\$&")}"`;
 
 /** Typed before a stage that started fresh for want of a session to fork. Avoids the word the agent detector arms on. */
 export const FRESH_WHY =
@@ -89,8 +72,8 @@ export function featureRel(repoRoot: string, featureDir: string): string {
 }
 
 /**
- * The stage's first message to claude: `/<skill> <args>`, or its prompt as written. Null for a
- * stage with nothing to send (the Loop). Takes the stage with its route's overrides applied.
+ * What the stage types into claude: `/<skill> <args>`, or its prompt as written. Null for a stage
+ * with nothing to type (the Loop). Takes the stage with its route's overrides applied.
  */
 export function stageInput(
   stage: Pick<Stage, "name" | "skill" | "args" | "prompt" | "run">,
@@ -105,7 +88,7 @@ export function stageInput(
 }
 
 /**
- * What Tickets sends when there is no session to continue: the spec's path instead of the
+ * What Tickets types when there is no session to continue: the spec's path instead of the
  * conversation. Null for any other stage, which stops and asks.
  */
 export function missingSessionInput(
@@ -118,7 +101,7 @@ export function missingSessionInput(
 }
 
 /**
- * What "Work on this" sends an interactive `claude` (its `freshLine` input): the
+ * What "Work on this" types into an interactive `claude` (started with `freshLine`): the
  * `/implement` skill and the ticket's path, relative to the repo root. A path that is not a single
  * plain line is refused, so nothing but the path can reach the prompt.
  */

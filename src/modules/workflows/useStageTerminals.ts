@@ -46,7 +46,7 @@ export function disposeClosedFeatures(openDirs: Set<string>) {
 export type StartRequest = {
   /** The stage's plain name. */
   key: string;
-  /** `/<skill> <args>` or the prompt; claude's first message, passed on its command line. */
+  /** `/<skill> <args>` or the prompt; typed into claude once it is up. */
   input: string;
   unattended: boolean;
   /** The session this stage forks (`session: continue`); null starts a fresh session. */
@@ -116,8 +116,8 @@ export function useStageTerminals(
   }, []);
 
   const launch = useCallback(
-    (leaf: number, line: string, note?: string) =>
-      launchClaude(repoRoot, leaf, line, note),
+    (leaf: number, line: string, input: string | null, note?: string) =>
+      launchClaude(repoRoot, leaf, line, input, note),
     [repoRoot],
   );
 
@@ -141,15 +141,15 @@ export function useStageTerminals(
       const line = unattended
         ? unattendedLine(input)
         : forkFrom
-          ? forkLine(forkFrom, sessionId, input)
-          : freshLine(sessionId, input);
+          ? forkLine(forkFrom, sessionId)
+          : freshLine(sessionId);
       const note = joinNotes([
         previous && !previous.unattended
           ? rerunNote(previous.sessionId)
           : undefined,
         extra,
       ]);
-      void launch(leaf, line, note);
+      void launch(leaf, line, unattended ? null : input, note);
     },
     [featureDir, launch],
   );
@@ -162,7 +162,7 @@ export function useStageTerminals(
       const leaf = e.leaf ?? allocateStageLeaf();
       if (e.leaf === null) remember(featureDir, leaf);
       dispatch({ type: "resume", key, leaf });
-      void launch(leaf, resumeLine(e.sessionId));
+      void launch(leaf, resumeLine(e.sessionId), null);
     },
     [featureDir, launch],
   );
