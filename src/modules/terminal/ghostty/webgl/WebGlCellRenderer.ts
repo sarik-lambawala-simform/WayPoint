@@ -144,6 +144,7 @@ export class WebGlCellRenderer {
   private forceFullRedraw = true;
   private contextLost = false;
   private viewportDirty = true;
+  private appliedViewport: GridViewport | null = null;
   private contextRestoreTimer: number | null = null;
   private frameCount = 0;
   private uploadCount = 0;
@@ -261,8 +262,17 @@ export class WebGlCellRenderer {
     }
     const backingStoreChanged = this.backingStore.commit();
     if (backingStoreChanged) this.backingStoreResizeCount += 1;
-    if (backingStoreChanged || this.viewportDirty) {
-      this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    // The backing is reused across nearby sizes, so it can be larger than the grid: draw into the
+    // grid's own rectangle, or the grid stretches over the whole canvas and its bottom rows fall
+    // outside the pane.
+    const viewport = this.gridViewport();
+    if (
+      backingStoreChanged ||
+      this.viewportDirty ||
+      !viewportsEqual(viewport, this.appliedViewport)
+    ) {
+      this.gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+      this.appliedViewport = viewport;
       this.viewportDirty = false;
       this.forceFullRedraw = true;
     }
@@ -463,8 +473,7 @@ export class WebGlCellRenderer {
     let rectanglesChanged = false;
     const first = Math.max(0, firstRow);
     const last = Math.min(this.rows - 1, lastRow);
-    const canvasWidth = this.canvas.width;
-    const canvasHeight = this.canvas.height;
+    const { width: gridWidth, height: gridHeight } = this.gridViewport();
     const viewportOrigin = frame.model.viewportOriginLine();
 
     for (let row = first; row <= last; row += 1) {
@@ -550,8 +559,8 @@ export class WebGlCellRenderer {
             ((flags & CellFlags.FAINT) !== 0 ? 0.5 : 1) *
               ((flags & CellFlags.BLINK) !== 0 ? -1 : 1),
             previousBackground !== background,
-            canvasWidth,
-            canvasHeight,
+            gridWidth,
+            gridHeight,
           );
         }
         previousBackground = background;
@@ -573,8 +582,8 @@ export class WebGlCellRenderer {
     foreground: number,
     alpha: number,
     clipLeft: boolean,
-    canvasWidth: number,
-    canvasHeight: number,
+    gridWidth: number,
+    gridHeight: number,
   ): void {
     let offsetX = glyph.originOffsetX;
     let width = glyph.width;
@@ -598,8 +607,8 @@ export class WebGlCellRenderer {
 
     this.glyphAttributes[index] = offsetX;
     this.glyphAttributes[index + 1] = glyph.originOffsetY;
-    this.glyphAttributes[index + 2] = width / canvasWidth;
-    this.glyphAttributes[index + 3] = glyph.height / canvasHeight;
+    this.glyphAttributes[index + 2] = width / gridWidth;
+    this.glyphAttributes[index + 3] = glyph.height / gridHeight;
     this.glyphAttributes[index + 4] = uvMinX;
     this.glyphAttributes[index + 5] = glyph.uvMinY;
     this.glyphAttributes[index + 6] = uvMaxX - uvMinX;
@@ -896,10 +905,11 @@ export class WebGlCellRenderer {
       false,
       PROJECTION_MATRIX,
     );
+    const viewport = this.gridViewport();
     gl.uniform2f(
       resources.glyphProgram.resolution,
-      this.canvas.width,
-      this.canvas.height,
+      viewport.width,
+      viewport.height,
     );
     atlas.bindAndUpload();
     gl.uniform1i(resources.glyphProgram.atlas, 0);
@@ -1152,6 +1162,50 @@ export class WebGlCellRenderer {
   private assertLive(): void {
     if (this.disposed) throw new Error("WebGL renderer is disposed");
   }
+
+  /** Where the grid is drawn in the canvas: its own device size, anchored top-left. */
+  private gridViewport(): GridViewport {
+    const metrics = this.profile?.metrics;
+    return gridViewport(
+      this.canvas.width,
+      this.canvas.height,
+      this.cols * (metrics?.deviceCellWidth ?? 0),
+      this.rows * (metrics?.deviceCellHeight ?? 0),
+    );
+  }
+}
+
+export type GridViewport = {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+};
+
+/**
+ * The GL viewport for a grid of `gridWidth` x `gridHeight` device pixels in a canvas backing that
+ * may be larger (it is reused across nearby sizes). Anchored at the canvas's top-left; GL's origin
+ * is bottom-left, hence the y offset. Never larger than the canvas, never smaller than a pixel.
+ */
+export function gridViewport(
+  canvasWidth: number,
+  canvasHeight: number,
+  gridWidth: number,
+  gridHeight: number,
+): GridViewport {
+  const width = Math.max(1, Math.min(canvasWidth, Math.round(gridWidth)));
+  const height = Math.max(1, Math.min(canvasHeight, Math.round(gridHeight)));
+  return { x: 0, y: Math.max(0, canvasHeight - height), width, height };
+}
+
+function viewportsEqual(a: GridViewport, b: GridViewport | null): boolean {
+  return (
+    b !== null &&
+    a.x === b.x &&
+    a.y === b.y &&
+    a.width === b.width &&
+    a.height === b.height
+  );
 }
 
 export function rendererProfileKey(profile: WebGlRendererProfile): string {
