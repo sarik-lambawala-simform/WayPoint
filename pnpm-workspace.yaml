@@ -8,6 +8,8 @@ catalog:
 overrides:
   # Parsers and themes must share Lezer's highlighting metadata identity.
   '@lezer/highlight': 'catalog:'
+  # GHSA-mrhx-c7xc-m3w5: zod 4 before 4.6.6 can exhaust memory on oversized input (via @ai-sdk/*).
+  'zod@>=4.0.0 <4.6.6': 4.6.6
 allowBuilds:
   esbuild: true
   msgpackr-extract: false
