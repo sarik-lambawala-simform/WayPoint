@@ -166,14 +166,19 @@ pub fn read_result_rows(file: &Path) -> Vec<ResultRow> {
             if number.len() != 2 || !number.chars().all(|c| c.is_ascii_digit()) {
                 return None;
             }
+            // The script writes nine columns; a row without seconds and cost is a half-written line.
             let seconds = cols
-                .next()
-                .and_then(|s| s.trim().parse::<f64>().ok())
+                .next()?
+                .trim()
+                .parse::<f64>()
+                .ok()
                 .filter(|s| s.is_finite() && *s > 0.0)
                 .unwrap_or(0.0);
             let cost = cols
-                .next()
-                .and_then(|s| s.trim().parse::<f64>().ok())
+                .next()?
+                .trim()
+                .parse::<f64>()
+                .ok()
                 .filter(|c| c.is_finite() && *c > 0.0)
                 .unwrap_or(0.0);
             Some(ResultRow {

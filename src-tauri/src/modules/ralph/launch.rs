@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(cmd.get_current_dir(), Some(Path::new("/repo")));
         assert_eq!(
             cmd.get_program(),
-            OsStr::new("/repo/ralph/run-ralph-tickets.sh")
+            Path::new("/repo").join(SCRIPT).as_os_str()
         );
     }
 

@@ -29,7 +29,7 @@ fn registry() -> &'static Mutex<HashMap<u32, Arc<AtomicBool>>> {
 /// Whether a polling watch reads on tick number `tick`: every second while a run it saw is live
 /// (its `state.json` and `heartbeat`), every fifth second otherwise (looking for a new run folder).
 pub fn poll_due(tick: u32, live: bool) -> bool {
-    live || tick % DISCOVERY_TICKS == 0
+    live || tick.is_multiple_of(DISCOVERY_TICKS)
 }
 
 /// Starts watching; `on_view` gets the view now and after each change, and returns false to stop.

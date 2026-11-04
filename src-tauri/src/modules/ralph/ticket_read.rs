@@ -69,7 +69,7 @@ pub fn read_outcome(tsv: &Path, number: &str) -> Option<TicketOutcome> {
                 reason: cols.get(8).map(|s| s.to_string()).unwrap_or_default(),
             })
         })
-        .last()
+        .next_back()
 }
 
 /// Reads `file` from `offset` to the last newline, at most `MAX_CHUNK` bytes.
