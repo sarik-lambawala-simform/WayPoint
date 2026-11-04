@@ -251,7 +251,7 @@ pub async fn workflows_loop_start(
         };
         // The distro check comes first: a tool the script needs and the distro lacks is named
         // here, before any run folder is made.
-        crate::modules::workspace::validate_wsl_distro_name(&target.distro)?;
+        // `check_distro` validates the distro name on Windows and refuses everywhere else.
         let printed = super::wsl::check_distro(&target.distro)?;
         let missing = super::wsl::missing_tools(&printed);
         if !missing.is_empty() {

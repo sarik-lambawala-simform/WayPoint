@@ -114,7 +114,7 @@ struct Watches {
 #[cfg(not(target_os = "macos"))]
 impl Watches {
     fn new(tx: mpsc::Sender<()>) -> Self {
-        use notify::{Config, Event, EventKind, RecommendedWatcher};
+        use notify::{Config, Event, EventKind, RecommendedWatcher, Watcher};
         let watcher = RecommendedWatcher::new(
             move |result: notify::Result<Event>| {
                 if let Ok(event) = result {
