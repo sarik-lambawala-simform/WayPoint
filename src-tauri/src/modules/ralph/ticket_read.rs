@@ -54,7 +54,8 @@ pub fn read_outcome(tsv: &Path, number: &str) -> Option<TicketOutcome> {
     text.lines()
         .filter_map(|line| {
             let cols: Vec<&str> = line.split('\t').collect();
-            if cols.first() != Some(&number) || cols.len() < 2 {
+            // Fewer than the seconds and cost columns is a row still being appended.
+            if cols.first() != Some(&number) || cols.len() < 4 {
                 return None;
             }
             let num = |i: usize| {
@@ -215,6 +216,17 @@ mod tests {
         let sub = repo.path().join("logs/ralph-tickets-1/01-feat");
         fs::create_dir_all(&sub).unwrap();
         (repo, sub)
+    }
+
+    #[test]
+    fn a_half_written_row_is_not_an_outcome() {
+        let (_repo, sub) = run_folder();
+        let tsv = sub.join("tickets.tsv");
+        fs::write(&tsv, "03\tfailed\t12\t0.5\t\t\t\t\tbuild broke\n03\tcomple").unwrap();
+        let o = read_outcome(&tsv, "03").unwrap();
+        assert_eq!(o.outcome, "failed");
+        fs::write(&tsv, "03\tdone\n").unwrap();
+        assert!(read_outcome(&tsv, "03").is_none());
     }
 
     #[test]
