@@ -38,7 +38,7 @@ export function parseStarts(raw: unknown): Record<string, number> {
   return out;
 }
 
-export type TerminalStatus = "running" | "ended";
+type TerminalStatus = "running" | "ended";
 
 export type TerminalEntry = {
   sessionId: string;
@@ -131,7 +131,7 @@ const store = new LazyStore("waypoint-stage-sessions.json", {
 const KEY = "sessions";
 const STARTS_KEY = "started";
 
-export async function loadSessions(): Promise<Record<string, string>> {
+async function loadSessions(): Promise<Record<string, string>> {
   return parseSessions(await store.get<unknown>(KEY));
 }
 

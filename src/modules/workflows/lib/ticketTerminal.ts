@@ -17,7 +17,7 @@ export type TicketRead = {
   outcome: TicketOutcome | null;
 };
 
-export type TicketOutcome = {
+type TicketOutcome = {
   outcome: string;
   seconds: number | null;
   cost: number | null;
@@ -73,7 +73,7 @@ const RESET = "\u001b[0m";
 const crlf = (s: string) => s.replace(/\r?\n/g, "\r\n");
 
 /** The note shown before a ticket has a stream, or null when it has one. */
-export function phaseNote(
+function phaseNote(
   phase: TicketPhase,
   ticket: TicketRow,
 ): string | null {
@@ -166,7 +166,7 @@ function toolSummary(input: Json | null): string {
 }
 
 /** One stream event as terminal lines (with a trailing newline), or "" for one that shows nothing. */
-export function renderEvent(line: string): string {
+function renderEvent(line: string): string {
   let ev: Json | null;
   try {
     ev = obj(JSON.parse(line));

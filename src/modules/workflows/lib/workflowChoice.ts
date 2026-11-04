@@ -3,7 +3,7 @@
 
 import type { Catalog, CatalogEntry } from "./api";
 
-export const DEFAULT_WORKFLOW_ID = "matt-pocock";
+const DEFAULT_WORKFLOW_ID = "matt-pocock";
 
 export type Resolved = { entry: CatalogEntry } | { error: string };
 

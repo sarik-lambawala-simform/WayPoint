@@ -3,7 +3,7 @@
 
 import type { RunView } from "./loopRun";
 
-export type OpenedTicket = {
+type OpenedTicket = {
   /** The display leaf that replays the run folder. No shell runs behind it. */
   replay: number;
   /** The shell the user opened in the repo root; the app never types into it. */

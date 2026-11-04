@@ -38,7 +38,7 @@ async function claudeHome(): Promise<string | null> {
   return home;
 }
 
-export type DoneWhen = "confirm" | "tickets" | "map" | { check: string };
+type DoneWhen = "confirm" | "tickets" | "map" | { check: string };
 
 export type Stage = {
   name: string;
@@ -64,7 +64,7 @@ export type Workflow = {
 
 export type WorkflowSource = "repo" | "user" | "shipped";
 
-export type FileRef = { source: WorkflowSource; path: string };
+type FileRef = { source: WorkflowSource; path: string };
 
 /** A workflow the picker offers: the file in use and the files it shadows. */
 export type CatalogEntry = {
@@ -76,7 +76,7 @@ export type CatalogEntry = {
   shadows: FileRef[];
 };
 
-export type LoadError = { file: string; line: number; message: string };
+type LoadError = { file: string; line: number; message: string };
 
 export type Catalog = {
   entries: CatalogEntry[];

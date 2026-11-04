@@ -3,7 +3,7 @@
 // a repo's identity; the host path (`\\wsl.localhost\<distro>\...`) exists only to read files.
 
 /** The tools a stage needs inside the distro, in the order `command -v` is asked. */
-export const REQUIRED_TOOLS = ["jq", "git", "curl", "claude"] as const;
+const REQUIRED_TOOLS = ["jq", "git", "curl", "claude"] as const;
 export type Tool = (typeof REQUIRED_TOOLS)[number];
 
 /** True for `/mnt/<drive>` and anything under it: Windows storage seen from the distro. */
@@ -75,7 +75,7 @@ export function missingWithInstall(output: string): MissingTool[] {
   }));
 }
 
-export const MNT_WARNING =
+const MNT_WARNING =
   "This repo is under /mnt: it is slow, and file changes may not be noticed. Moving it into the Linux file system is faster.";
 
 /** The one-line warning for a repo under `/mnt/<drive>/`, or null. */

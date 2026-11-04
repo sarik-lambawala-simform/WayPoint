@@ -28,7 +28,7 @@ export function endReason(run: RunView): string | null {
 }
 
 /** `14:30` in the machine's time zone, or "" for a time that does not parse. */
-export function clockTime(iso: string): string {
+function clockTime(iso: string): string {
   const at = new Date(iso);
   if (!iso || Number.isNaN(at.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -42,7 +42,7 @@ function resets(run: RunView): string {
 }
 
 /** `42 min`, `1 h 5 min`, or `under 1 min`. */
-export function noticeDuration(ms: number): string {
+function noticeDuration(ms: number): string {
   const min = Math.round(ms / 60000);
   if (min < 1) return "under 1 min";
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`;

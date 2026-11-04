@@ -78,7 +78,7 @@ export function runElapsedSeconds(run: RunView, now: number): number | null {
 }
 
 /** Whole seconds since the last heartbeat; null for a folder that has none. */
-export function heartbeatAgeSeconds(run: RunView, now: number): number | null {
+function heartbeatAgeSeconds(run: RunView, now: number): number | null {
   return run.heartbeat_at_ms === null
     ? null
     : Math.max(0, Math.floor((now - run.heartbeat_at_ms) / 1000));

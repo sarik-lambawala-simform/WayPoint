@@ -3,7 +3,7 @@
 
 import type { RunStatus } from "./loopRun";
 
-export const SCRIPT = "ralph/run-ralph-tickets.sh";
+const SCRIPT = "ralph/run-ralph-tickets.sh";
 
 export type BranchMode = "new" | "current" | "per-ticket";
 

@@ -14,12 +14,11 @@ import {
   chosenRoute,
   computeProgress,
   type Progress,
-  type ProgressFile,
   repoListDirs,
 } from "./lib/progress";
 import { type Resolved, resolveWorkflow } from "./lib/workflowChoice";
 
-export const PROGRESS_FILE = "progress.yaml";
+const PROGRESS_FILE = "progress.yaml";
 
 export type FeatureState = {
   resolved: Resolved;
@@ -140,5 +139,3 @@ export function useFeatureProgress(
 
   return { state, record, refresh };
 }
-
-export type { ProgressFile };

@@ -4,7 +4,7 @@
 import type { Stage, Workflow } from "./api";
 import { isDoneStatus } from "./humanTicket";
 
-export type Marks = {
+type Marks = {
   confirmed?: string | null;
   skipped?: string | null;
   /** When a `check` gate last passed. */
@@ -25,7 +25,7 @@ export type StageState =
   | "not-recorded"
   | "pending";
 
-export type GateKind =
+type GateKind =
   | "produces"
   | "confirm"
   | "tickets"
@@ -129,7 +129,7 @@ export function chosenRoute(
 }
 
 /** The `map` gate: `map.md` exists, no wayfinder ticket is open, nothing under Not yet specified. */
-export function mapCleared(facts: MapFacts | undefined): boolean {
+function mapCleared(facts: MapFacts | undefined): boolean {
   return Boolean(
     facts &&
       facts.exists &&
