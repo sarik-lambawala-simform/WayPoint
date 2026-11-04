@@ -45,8 +45,9 @@ with none written and a `map.md` in the folder, Wayfinder is inferred and writte
 ## Stage terminals
 
 `modules/workflows` hosts one terminal per started stage inside the feature tab (`StageTerminalHost`, `useStageTerminals`), built on the
-launcher pattern: `TerminalPane` in the repo root, `whenSessionReady`, then `writeToSession(line + "\r")`. The command lines and the
-typed text are the pure `lib/stageCommand.ts`; the terminal model and the session-id store (`waypoint-stage-sessions.json` in the app
+launcher pattern: `TerminalPane` in the repo root, `whenSessionReady`, then `writeToSession(line + "\r")`. The stage's command is
+claude's first message, passed on that line after `--` (never typed into claude later, so nothing the user types first can land
+ahead of it). The command lines are the pure `lib/stageCommand.ts`; the terminal model and the session-id store (`waypoint-stage-sessions.json` in the app
 data folder, keyed by feature folder and stage) are `lib/stageTerminals.ts`. Stage terminals are not tabs, so Terax's tab saving never
 sees them; their leaf ids start at 2^30 so they cannot collide with a tab's. Each stack of stage panes carries its own
 `data-terminal-stack` / `data-terminal-area`, so the WebGPU renderer gives it a canvas. The live dot is a `●` in the feature tab's title

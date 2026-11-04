@@ -29,6 +29,40 @@ describe("the claude command lines", () => {
     );
   });
 
+  it("starts a fresh session with the stage's command as its first message", () => {
+    expect(freshLine(ID, "/grill-with-docs")).toBe(
+      `claude --session-id ${ID} -- '/grill-with-docs'`,
+    );
+  });
+
+  it("forks with the stage's command as the fork's first message", () => {
+    expect(forkLine(ID, OTHER, "/to-spec .scratch/f")).toBe(
+      `claude --resume ${ID} --fork-session --session-id ${OTHER} -- '/to-spec .scratch/f'`,
+    );
+  });
+
+  it("passes a prompt starting with a dash as the prompt, not an option", () => {
+    expect(freshLine(ID, "-v")).toBe(`claude --session-id ${ID} -- '-v'`);
+  });
+
+  it("passes the shell's special characters through to claude untouched", () => {
+    expect(freshLine(ID, 'it\'s !! $HOME "x" `y` \\')).toBe(
+      `claude --session-id ${ID} -- 'it'\\''s !! $HOME "x" \`y\` \\'`,
+    );
+  });
+
+  it("keeps a multi-line first message as one argument", () => {
+    expect(forkLine(ID, OTHER, "a\nb")).toBe(
+      `claude --resume ${ID} --fork-session --session-id ${OTHER} -- 'a\nb'`,
+    );
+  });
+
+  it("turns a carriage return into a newline, so it cannot submit the line early", () => {
+    expect(freshLine(ID, "a\r\nb\rc")).toBe(
+      `claude --session-id ${ID} -- 'a\nb\nc'`,
+    );
+  });
+
   it("refuses to fork from or into anything but a uuid", () => {
     expect(() => forkLine("x", OTHER)).toThrow();
     expect(() => forkLine(ID, "$(x)")).toThrow();
@@ -47,20 +81,24 @@ describe("the claude command lines", () => {
     expect(resumeLine(ID)).toBe(`claude --resume ${ID}`);
   });
 
-  it("runs an unattended stage as claude -p with the command in double quotes", () => {
+  it("runs an unattended stage as claude -p with the command in single quotes", () => {
     expect(unattendedLine("/to-spec .scratch/f")).toBe(
-      'claude -p "/to-spec .scratch/f"',
+      "claude -p -- '/to-spec .scratch/f'",
     );
   });
 
-  it("escapes what a double-quoted shell string would expand", () => {
-    expect(unattendedLine('say "hi" $HOME `x` \\')).toBe(
-      'claude -p "say \\"hi\\" \\$HOME \\`x\\` \\\\"',
+  it("passes an unattended prompt starting with a dash as the prompt", () => {
+    expect(unattendedLine("-v")).toBe("claude -p -- '-v'");
+  });
+
+  it("passes an unattended prompt's special characters through untouched", () => {
+    expect(unattendedLine("it's $HOME")).toBe(
+      "claude -p -- 'it'\\''s $HOME'",
     );
   });
 
   it("keeps a multi-line prompt as one argument", () => {
-    expect(unattendedLine("a\nb")).toBe('claude -p "a\nb"');
+    expect(unattendedLine("a\nb")).toBe("claude -p -- 'a\nb'");
   });
 
   it("refuses an id that is not a plain uuid", () => {
