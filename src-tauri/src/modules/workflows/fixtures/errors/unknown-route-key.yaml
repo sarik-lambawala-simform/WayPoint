@@ -1,0 +1,8 @@
+version: 1
+title: Route key
+stages:
+  - name: One
+    skill: a
+    routes:
+      other:
+        colour: red

@@ -1,0 +1,15 @@
+#!/bin/bash
+# Fake `curl` for the run tests. The script calls curl only for its network
+# check, so this answers that check and nothing else.
+#
+#   FAKE_CURL_EXIT  the exit code  [default: 0, the link is up]
+#                   7 is curl's "could not connect", the link is down
+#   FAKE_TRAIL      if set, a file this appends one JSON line to per call,
+#                   holding FAKE_STATE's contents then
+set -u
+if [[ -n "${FAKE_TRAIL:-}" ]]; then
+  state="null"
+  [[ -n "${FAKE_STATE:-}" && -s "$FAKE_STATE" ]] && state="$(cat "$FAKE_STATE")"
+  jq -cn --argjson state "$state" '{tool: "curl", event: "call", state: $state}' >>"$FAKE_TRAIL"
+fi
+exit "${FAKE_CURL_EXIT:-0}"

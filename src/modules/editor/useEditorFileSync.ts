@@ -68,7 +68,8 @@ export function useEditorFileSync({ tabs, tabsRef, editorRefs }: Params) {
     const wantDirs = new Set<string>();
     const wantFiles = new Set<string>();
     for (const t of tabs) {
-      if (t.kind !== "editor") continue;
+      // fork: markdown tabs reload on disk changes too, so they are watched.
+      if (t.kind !== "editor" && t.kind !== "markdown") continue;
       wantDirs.add(parentDir(t.path));
       wantFiles.add(t.path);
     }

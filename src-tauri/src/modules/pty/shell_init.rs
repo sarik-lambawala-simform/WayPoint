@@ -1127,7 +1127,7 @@ mod tests {
             address: "127.0.0.1:1234".into(),
             token: "secret".into(),
             pane_id: 42,
-            cli_path: Some("/app/terax-cli".into()),
+            cli_path: Some("/app/wayp-cli".into()), // fork: sidecar is wayp-cli
             cli_bin_dir: Some(std::path::PathBuf::from("/app/bin")),
         };
         apply_common(&mut command, None, false, Some(&control));
@@ -1143,7 +1143,7 @@ mod tests {
         assert_eq!(command.get_env("TERAX_PANE_ID"), Some(OsStr::new("42")));
         assert_eq!(
             command.get_env("TERAX_CLI"),
-            Some(OsStr::new("/app/terax-cli"))
+            Some(OsStr::new("/app/wayp-cli")) // fork: sidecar is wayp-cli
         );
         assert_eq!(
             command

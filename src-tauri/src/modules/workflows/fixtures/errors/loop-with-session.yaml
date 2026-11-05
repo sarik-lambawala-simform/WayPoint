@@ -1,0 +1,8 @@
+version: 1
+title: Loop with session
+stages:
+  - name: One
+    skill: a
+  - name: Loop
+    run: loop
+    session: fresh

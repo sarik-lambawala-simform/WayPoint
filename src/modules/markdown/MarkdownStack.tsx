@@ -6,9 +6,15 @@ type Props = {
   tabs: Tab[];
   activeId: number;
   onSetMarkdownView: (id: number, mode: "rendered" | "raw") => void;
+  onOpenMarkdown?: (path: string) => void; // fork
 };
 
-export function MarkdownStack({ tabs, activeId, onSetMarkdownView }: Props) {
+export function MarkdownStack({
+  tabs,
+  activeId,
+  onSetMarkdownView,
+  onOpenMarkdown, // fork
+}: Props) {
   const markdowns = tabs.filter(
     (t): t is MarkdownTab => t.kind === "markdown" && !t.cold,
   );
@@ -29,6 +35,7 @@ export function MarkdownStack({ tabs, activeId, onSetMarkdownView }: Props) {
             <MarkdownPreviewPane
               path={t.path}
               visible={visible}
+              onOpenMarkdown={onOpenMarkdown} // fork
               onSetView={(mode) => onSetMarkdownView(t.id, mode)}
             />
           </div>

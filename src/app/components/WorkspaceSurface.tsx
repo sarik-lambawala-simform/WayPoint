@@ -1,8 +1,10 @@
 import type { ComponentProps } from "react";
+import type { WorkspaceEnv } from "@/modules/workspace"; // fork
 import { cn } from "@/lib/utils";
 import { AiDiffStack, EditorStack, GitDiffStack } from "@/modules/editor";
 import { GitHistoryStack } from "@/modules/git-history";
 import { MarkdownStack } from "@/modules/markdown";
+import { FeatureStack } from "@/modules/workflows"; // fork
 import { PreviewStack } from "@/modules/preview";
 import type { Tab } from "@/modules/tabs";
 import { TerminalStack } from "@/modules/terminal";
@@ -32,6 +34,11 @@ type Props = {
   onOpenCommitFile: GitHistoryStackProps["onOpenCommitFile"];
   onGitHistorySearchHandle: GitHistoryStackProps["onSearchHandle"];
   onSetMarkdownView: EditorStackProps["onSetMarkdownView"];
+  onFeatureTitle: (id: number, title: string) => void; // fork
+  onOpenFeaturePath: (path: string) => void; // fork
+  onSwitchEnv: (env: WorkspaceEnv) => void; // fork
+  onActivateTab: (id: number) => void; // fork
+  onOpenMarkdown: (path: string) => void; // fork
 };
 
 const LAYER = "absolute inset-0";
@@ -63,6 +70,11 @@ export function WorkspaceSurface({
   onOpenCommitFile,
   onGitHistorySearchHandle,
   onSetMarkdownView,
+  onFeatureTitle, // fork
+  onOpenFeaturePath, // fork
+  onSwitchEnv, // fork
+  onActivateTab, // fork
+  onOpenMarkdown, // fork
 }: Props) {
   const kind = activeTab?.kind;
   const isTerminalTab = kind === "terminal";
@@ -72,6 +84,7 @@ export function WorkspaceSurface({
   const isAiDiffTab = kind === "ai-diff";
   const isGitDiffTab = kind === "git-diff" || kind === "git-commit-file";
   const isGitHistoryTab = kind === "git-history";
+  const isFeatureTab = kind === "feature"; // fork
 
   return (
     <div className="relative h-full min-h-0">
@@ -125,6 +138,7 @@ export function WorkspaceSurface({
           tabs={tabs}
           activeId={activeId}
           onSetMarkdownView={onSetMarkdownView}
+          onOpenMarkdown={onOpenMarkdown} // fork
         />
       </div>
       <div
@@ -156,6 +170,22 @@ export function WorkspaceSurface({
           activeId={activeId}
           onOpenCommitFile={onOpenCommitFile}
           onSearchHandle={onGitHistorySearchHandle}
+        />
+      </div>
+      {/* fork: WayPoint feature tabs */}
+      <div
+        className={cn(LAYER, !isFeatureTab && "invisible pointer-events-none")}
+        aria-hidden={!isFeatureTab}
+      >
+        {/* fork: feature tab callbacks */}
+        <FeatureStack
+          tabs={tabs}
+          activeId={activeId}
+          onTitle={onFeatureTitle}
+          onOpenPath={onOpenFeaturePath}
+          onOpenCommitFile={onOpenCommitFile}
+          onSwitchEnv={onSwitchEnv}
+          onActivate={onActivateTab}
         />
       </div>
     </div>

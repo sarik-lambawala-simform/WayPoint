@@ -56,9 +56,9 @@ const cargoArgs = [
   "--manifest-path",
   join(tauriDir, "Cargo.toml"),
   "--package",
-  "terax-cli",
+  "wayp-cli", // fork: sidecar is wayp-cli
   "--bin",
-  "terax-cli",
+  "wayp-cli", // fork: sidecar is wayp-cli
   "--target",
   target,
 ];
@@ -73,12 +73,12 @@ const source = join(
   "target",
   target,
   profile,
-  `terax-cli${extension}`,
+  `wayp-cli${extension}`, // fork: sidecar is wayp-cli
 );
 const destination = join(
   tauriDir,
   "binaries",
-  `terax-cli-${target}${extension}`,
+  `wayp-cli-${target}${extension}`, // fork: sidecar is wayp-cli
 );
 requireArtifact(source, "Built CLI artifact");
 mkdirSync(dirname(destination), { recursive: true });

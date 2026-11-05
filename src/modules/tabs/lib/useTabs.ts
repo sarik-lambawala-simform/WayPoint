@@ -125,6 +125,19 @@ export type GitCommitFileDiffTab = TabBase & {
   originalPath: string | null;
 };
 
+// fork: WayPoint feature tab, rendered by the `workflows` module.
+export type FeatureTab = TabBase & {
+  id: number;
+  kind: "feature";
+  title: string;
+  /** Git top folder of the feature's repo. */
+  repoRoot: string;
+  /** Feature folder name, a direct child of `<repoRoot>/.scratch/`. */
+  feature: string;
+  /** Absolute path of the feature folder. */
+  featureDir: string;
+};
+
 export type Tab =
   | TerminalTab
   | EditorTab
@@ -133,7 +146,8 @@ export type Tab =
   | AiDiffTab
   | GitDiffTab
   | GitHistoryTab
-  | GitCommitFileDiffTab;
+  | GitCommitFileDiffTab
+  | FeatureTab; // fork
 
 export type TabPatch = Partial<{
   title: string;
@@ -528,6 +542,38 @@ export function planCommitHistoryOpen(
         title,
         repoRoot: input.repoRoot,
       } satisfies GitHistoryTab,
+    ],
+    targetId: id,
+  };
+}
+
+// fork: one feature tab per feature folder per space; opening it again switches to it.
+export function planFeatureOpen(
+  tabs: Tab[],
+  input: { repoRoot: string; feature: string; featureDir: string },
+  spaceId: string,
+  allocId: () => number,
+): { tabs: Tab[]; targetId: number } {
+  const existing = tabs.find(
+    (tab) =>
+      tab.kind === "feature" &&
+      tab.spaceId === spaceId &&
+      tab.featureDir === input.featureDir,
+  );
+  if (existing) return { tabs, targetId: existing.id };
+  const id = allocId();
+  return {
+    tabs: [
+      ...tabs,
+      {
+        id,
+        kind: "feature",
+        spaceId,
+        title: input.feature,
+        repoRoot: input.repoRoot,
+        feature: input.feature,
+        featureDir: input.featureDir,
+      } satisfies FeatureTab,
     ],
     targetId: id,
   };
@@ -1124,6 +1170,32 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     [setTabs, setActiveId],
   );
 
+  // fork: `activate: false` adds the tab without taking focus (reopen on launch).
+  const openFeatureTab = useCallback(
+    (input: {
+      repoRoot: string;
+      feature: string;
+      featureDir: string;
+      spaceId?: string;
+      activate?: boolean;
+    }) => {
+      const curr = tabsRef.current;
+      const plan = planFeatureOpen(
+        curr,
+        input,
+        input.spaceId ?? activeSpaceIdRef.current,
+        () => nextIdRef.current++,
+      );
+      if (plan.tabs !== curr) {
+        tabsRef.current = plan.tabs;
+        setTabs(plan.tabs);
+      }
+      if (input.activate !== false) setActiveId(plan.targetId);
+      return plan.targetId;
+    },
+    [setTabs, setActiveId],
+  );
+
   const openCommitFileDiffTab = useCallback(
     (input: {
       repoRoot: string;
@@ -1513,6 +1585,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     openAiDiffTab,
     openGitDiffTab,
     openCommitHistoryTab,
+    openFeatureTab, // fork
     openCommitFileDiffTab,
     setAiDiffStatus,
     closeAiDiffTab,

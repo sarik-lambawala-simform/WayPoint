@@ -4,7 +4,8 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    # fork: upstream-sync/* branches (an occasional pull of a Terax release tag, not a regular sync) run the same gates as main.
+    branches: [main, "upstream-sync/*"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -74,6 +75,27 @@ jobs:
       - name: Terminal models, input, blocks, transport, and renderer lifecycle
         run: pnpm exec vitest run src/modules/terminal
 
+  # fork: the Ralph engine's own tests (real script, fake claude and curl, heartbeat).
+  ralph-script:
+    name: ralph-script (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Ralph script tests
+        run: pnpm exec vitest run ralph
+
   rust:
     runs-on: ubuntu-22.04
     steps:
@@ -118,7 +140,7 @@ jobs:
 
       - name: cargo nextest
         working-directory: src-tauri
-        run: cargo nextest run --locked
+        run: cargo nextest run --locked --no-fail-fast
 
       - name: fish shell integration
         run: fish --no-config src-tauri/src/modules/pty/scripts/init.test.fish
@@ -151,7 +173,7 @@ jobs:
 
       - name: cargo nextest
         working-directory: src-tauri
-        run: cargo nextest run --locked --retries 2
+        run: cargo nextest run --locked --retries 2 --no-fail-fast
 
   coverage:
     runs-on: ubuntu-22.04

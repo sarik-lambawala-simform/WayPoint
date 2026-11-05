@@ -213,7 +213,7 @@ def build(args, source: Path, output: Path, target_dir: Path) -> Path:
 
 def clean_profile(home: Path) -> None:
     """Removes everything a previous run left for the bench identifier (never the product's)."""
-    assert IDENTIFIER != "app.crynta.terax"
+    assert IDENTIFIER != "com.simform.workflows"  # fork: identifier
     shutil.rmtree(home, ignore_errors=True)
     # WebKit, Tauri and cfprefsd may resolve the user's real library even with HOME overridden.
     import pwd

@@ -1,0 +1,233 @@
+import { describe, expect, it } from "vitest";
+import {
+  canStart,
+  featureRel,
+  forkLine,
+  freshNote,
+  joinNotes,
+  missingSessionInput,
+  freshLine,
+  rerunNote,
+  resumeLine,
+  stageInput,
+  substituteVars,
+  ticketPathOf,
+  unattendedLine,
+  withWords,
+  workOnThisInput,
+} from "./stageCommand";
+
+const ID = "6f1c2a52-8c0e-4a1f-9d57-3b1d3a0f6a11";
+const OTHER = "0a1c2a52-8c0e-4a1f-9d57-3b1d3a0f6a22";
+
+describe("the claude command lines", () => {
+  it("starts a fresh session with the id the app picked", () => {
+    expect(freshLine(ID)).toBe(`claude --session-id ${ID}`);
+  });
+
+  it("forks the previous stage's session under a new id the app picked", () => {
+    expect(forkLine(ID, OTHER)).toBe(
+      `claude --resume ${ID} --fork-session --session-id ${OTHER}`,
+    );
+  });
+
+  it("starts a fresh session with the stage's command as its first message", () => {
+    expect(freshLine(ID, "/grill-with-docs")).toBe(
+      `claude --session-id ${ID} -- '/grill-with-docs'`,
+    );
+  });
+
+  it("forks with the stage's command as the fork's first message", () => {
+    expect(forkLine(ID, OTHER, "/to-spec .scratch/f")).toBe(
+      `claude --resume ${ID} --fork-session --session-id ${OTHER} -- '/to-spec .scratch/f'`,
+    );
+  });
+
+  it("passes a prompt starting with a dash as the prompt, not an option", () => {
+    expect(freshLine(ID, "-v")).toBe(`claude --session-id ${ID} -- '-v'`);
+  });
+
+  it("passes the shell's special characters through to claude untouched", () => {
+    expect(freshLine(ID, 'it\'s !! $HOME "x" `y` \\')).toBe(
+      `claude --session-id ${ID} -- 'it'\\''s !! $HOME "x" \`y\` \\'`,
+    );
+  });
+
+  it("keeps a multi-line first message as one argument", () => {
+    expect(forkLine(ID, OTHER, "a\nb")).toBe(
+      `claude --resume ${ID} --fork-session --session-id ${OTHER} -- 'a\nb'`,
+    );
+  });
+
+  it("turns a carriage return into a newline, so it cannot submit the line early", () => {
+    expect(freshLine(ID, "a\r\nb\rc")).toBe(
+      `claude --session-id ${ID} -- 'a\nb\nc'`,
+    );
+  });
+
+  it("refuses to fork from or into anything but a uuid", () => {
+    expect(() => forkLine("x", OTHER)).toThrow();
+    expect(() => forkLine(ID, "$(x)")).toThrow();
+  });
+
+  it("says in the terminal that a re-run keeps the old session on disk", () => {
+    const note = rerunNote(ID);
+    expect(note).toBe(
+      `echo "Re-running: the previous session ${ID} stays on disk."`,
+    );
+    expect(note).not.toMatch(/claude/);
+    expect(() => rerunNote("a; b")).toThrow();
+  });
+
+  it("resumes a stage's own session and nothing else", () => {
+    expect(resumeLine(ID)).toBe(`claude --resume ${ID}`);
+  });
+
+  it("runs an unattended stage as claude -p with the command in single quotes", () => {
+    expect(unattendedLine("/to-spec .scratch/f")).toBe(
+      "claude -p -- '/to-spec .scratch/f'",
+    );
+  });
+
+  it("passes an unattended prompt starting with a dash as the prompt", () => {
+    expect(unattendedLine("-v")).toBe("claude -p -- '-v'");
+  });
+
+  it("passes an unattended prompt's special characters through untouched", () => {
+    expect(unattendedLine("it's $HOME")).toBe("claude -p -- 'it'\\''s $HOME'");
+  });
+
+  it("keeps a multi-line prompt as one argument", () => {
+    expect(unattendedLine("a\nb")).toBe("claude -p -- 'a\nb'");
+  });
+
+  it("refuses an id that is not a plain uuid", () => {
+    expect(() => freshLine("x; rm -rf /")).toThrow();
+    expect(() => resumeLine("$(x)")).toThrow();
+  });
+});
+
+describe("the text a stage types", () => {
+  const vars = { feature: ".scratch/f", workflowDir: "/w" };
+
+  it("types /<skill> <args>", () => {
+    expect(
+      stageInput(
+        { name: "S", skill: "to-spec", args: "{{ feature }}/map.md" },
+        vars,
+      ),
+    ).toBe("/to-spec .scratch/f/map.md");
+  });
+
+  it("types the bare slash command when there are no args", () => {
+    expect(stageInput({ name: "S", skill: "grill-with-docs" }, vars)).toBe(
+      "/grill-with-docs",
+    );
+    expect(stageInput({ name: "S", skill: "x", args: "  " }, vars)).toBe("/x");
+  });
+
+  it("types a prompt as written, placeholders filled", () => {
+    expect(
+      stageInput({ name: "S", prompt: "Work on {{ feature }}\nnow" }, vars),
+    ).toBe("Work on .scratch/f\nnow");
+  });
+
+  it("has nothing to type for a loop stage", () => {
+    expect(stageInput({ name: "Loop", run: "loop" }, vars)).toBeNull();
+  });
+});
+
+describe("placeholders", () => {
+  it("fills feature and workflow_dir and leaves other names alone", () => {
+    expect(
+      substituteVars(
+        "{{feature}} {{ workflow_dir }}/x {{ other }} {{ feature",
+        {
+          feature: "f",
+          workflowDir: "w",
+        },
+      ),
+    ).toBe("f w/x {{ other }} {{ feature");
+  });
+
+  it("makes the feature folder relative to the repo root", () => {
+    expect(featureRel("/r", "/r/.scratch/f")).toBe(".scratch/f");
+    expect(featureRel("/r/", "\\r\\.scratch\\f")).toBe(".scratch/f");
+  });
+});
+
+describe("when there is no session to continue", () => {
+  const vars = { feature: ".scratch/f", workflowDir: "/w" };
+
+  it("has Tickets start fresh from the spec's path", () => {
+    expect(missingSessionInput({ skill: "to-tickets" }, vars)).toBe(
+      "/to-tickets .scratch/f/spec.md",
+    );
+  });
+
+  it("has no fallback for another stage, which stops and asks", () => {
+    expect(missingSessionInput({ skill: "to-spec" }, vars)).toBeNull();
+    expect(missingSessionInput({}, vars)).toBeNull();
+  });
+
+  it("notes a fresh start in the terminal without the word claude", () => {
+    expect(freshNote()).not.toMatch(/claude/i);
+    expect(freshNote()).toMatch(/^echo "/);
+  });
+
+  it("joins notes into one shell line", () => {
+    expect(joinNotes([undefined, "echo a", "echo b"])).toBe("echo a; echo b");
+    expect(joinNotes([undefined])).toBeUndefined();
+  });
+});
+
+describe("Work on this", () => {
+  it("opens a fresh interactive claude and types /implement with the ticket path", () => {
+    expect(freshLine(ID)).toBe(`claude --session-id ${ID}`);
+    expect(workOnThisInput(".scratch/f/issues/18-human.md")).toBe(
+      "/implement .scratch/f/issues/18-human.md",
+    );
+  });
+
+  it("refuses a path that is empty or spans lines", () => {
+    expect(() => workOnThisInput("")).toThrow();
+    expect(() => workOnThisInput("a.md\n/exit")).toThrow();
+    expect(() => workOnThisInput("a.md\r")).toThrow();
+  });
+
+  it("names the ticket by its path from the repo root", () => {
+    expect(ticketPathOf("/r", "/r/.scratch/f", "18-human.md")).toBe(
+      ".scratch/f/issues/18-human.md",
+    );
+  });
+});
+
+describe("the user's words before a stage starts", () => {
+  it("keeps Start back on a stage that asks for words until there are some", () => {
+    expect(canStart("required", "")).toBe(false);
+    expect(canStart("required", "  \n ")).toBe(false);
+    expect(canStart("required", "a get user API")).toBe(true);
+  });
+
+  it("lets an optional stage, or one that does not say, start without words", () => {
+    expect(canStart("optional", "")).toBe(true);
+    expect(canStart(undefined, "")).toBe(true);
+    expect(canStart(null, "")).toBe(true);
+  });
+
+  it("sends the words after the command, as one first message", () => {
+    expect(withWords("/grill-with-docs", "  a get user API \n")).toBe(
+      "/grill-with-docs a get user API",
+    );
+    expect(withWords("/to-tickets f/spec.md", "small ones")).toBe(
+      "/to-tickets f/spec.md small ones",
+    );
+    expect(withWords("/to-spec", "   ")).toBe("/to-spec");
+  });
+
+  it("puts the command and the words in one shell word on claude's line", () => {
+    expect(freshLine(ID, withWords("/grill-with-docs", "it's done!"))).toBe(
+      `claude --session-id ${ID} -- '/grill-with-docs it'\\''s done!'`,
+    );
+  });
+});

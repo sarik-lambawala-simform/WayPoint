@@ -1,0 +1,6 @@
+version: 1
+title: Loop with skill
+stages:
+  - name: Loop
+    run: loop
+    skill: a

@@ -1,0 +1,6 @@
+version: 1
+title: Unknown key
+stages:
+  - name: One
+    skill: a
+    colour: red

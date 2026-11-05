@@ -271,9 +271,9 @@ describe("built startup graph", () => {
     expect(failure({ TERAX_BENCH_IDENTIFIER: "" })).toContain(
       "TERAX_BENCH_IDENTIFIER",
     );
-    expect(failure({ TERAX_BENCH_IDENTIFIER: "app.crynta.terax" })).toContain(
-      "not the product identifier",
-    );
+    expect(
+      failure({ TERAX_BENCH_IDENTIFIER: "com.simform.workflows" }),
+    ).toContain("not the product identifier");
     // Nothing was emitted by either attempt.
     expect(existsSync(join(outDir, "guarded"))).toBe(false);
   });

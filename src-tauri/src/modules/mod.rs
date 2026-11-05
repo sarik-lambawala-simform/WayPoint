@@ -13,9 +13,11 @@ pub mod lsp;
 pub mod net;
 pub mod proc;
 pub mod pty;
+pub mod ralph; // fork: WayPoint module
 pub mod runtime;
 pub mod secrets;
 pub mod shell;
 pub mod vibrancy;
 pub mod window_presentation;
+pub mod workflows; // fork: WayPoint module
 pub mod workspace;

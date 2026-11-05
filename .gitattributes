@@ -1,0 +1,5 @@
+# fork: the Ralph engine runs under bash on every OS (WSL included), and its ticket
+# readers match on LF line ends, so these never take CRLF on a Windows checkout.
+*.sh text eol=lf
+ralph/tests/fakes/* text eol=lf
+**/issues/*.md text eol=lf

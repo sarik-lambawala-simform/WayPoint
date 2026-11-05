@@ -1,0 +1,7 @@
+version: 1
+title: Duplicate
+stages:
+  - name: One
+    skill: a
+  - name: One
+    skill: b

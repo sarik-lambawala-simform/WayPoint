@@ -1,0 +1,20 @@
+version: 1
+title: Full
+description: Every field.
+stages:
+  - name: Plan
+    skill: plan
+    args: "{{ feature }}"
+    mode: unattended
+    session: continue
+    produces: ["{{ feature }}/plan.md", "docs/*.md"]
+    done_when:
+      check: "test -f {{ workflow_dir }}/ok"
+    optional: true
+    scope: repo
+    routes:
+      fast: { prompt: "go {{ feature }}", done_when: confirm }
+  - name: Say
+    prompt: "hello {{ feature }}"
+  - name: Loop
+    run: loop

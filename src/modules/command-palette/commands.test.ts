@@ -47,6 +47,9 @@ function baseContext(
     openSettings: noop,
     openKeyboardShortcuts: noop,
     openSpacesOverview: noop,
+    openRepo: noop, // fork
+    openFeature: noop, // fork
+    newFeature: noop, // fork
     newSpace: noop,
     switchSpace: noop,
     ...over,

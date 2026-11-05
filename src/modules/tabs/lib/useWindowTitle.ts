@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { findLeafCwd } from "@/modules/terminal/lib/panes";
 import type { Tab } from "./useTabs";
 
-const APP_NAME = "Terax";
+const APP_NAME = "WayPoint"; // fork: product name
 
 function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);

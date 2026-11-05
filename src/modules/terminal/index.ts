@@ -12,10 +12,13 @@ export {
 export {
   clearFocusedTerminal,
   disposeSession,
+  displayInSession, // fork
+  markDisplayLeaf, // fork
   leafHasForegroundProcess,
   leafIdForPty,
   navigateFocusedBlocks,
   ptyIdForLeaf,
+  whenDisplayReady, // fork
   whenSessionReady,
   writeToSession,
 } from "./lib/terminalSessionApi";

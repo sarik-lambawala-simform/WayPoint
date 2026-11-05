@@ -1,0 +1,7 @@
+#!/bin/bash
+# Fake `osascript` for the run tests. It sends no notice. It writes its
+# arguments as one line to FAKE_OSASCRIPT_LOG, so a test can read the notice's
+# text.
+set -u
+[[ -n "${FAKE_OSASCRIPT_LOG:-}" ]] && printf '%s\n' "$*" >>"$FAKE_OSASCRIPT_LOG"
+exit 0

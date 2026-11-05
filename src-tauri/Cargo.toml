@@ -1,6 +1,7 @@
 [package]
 name = "terax"
-version = "0.9.0"
+# fork: WayPoint versions start at 0.1.0
+version = "0.1.0"
 description = "Terax — an open-source AI-native terminal emulator"
 authors = ["crynta"]
 license = "Apache-2.0"
@@ -8,12 +9,14 @@ edition = "2021"
 default-run = "terax"
 
 [workspace]
-members = ["crates/terax-cli", "crates/terax-control-protocol"]
-default-members = [".", "crates/terax-cli", "crates/terax-control-protocol"]
+# fork: crates/terax-cli is now crates/wayp-cli
+members = ["crates/wayp-cli", "crates/terax-control-protocol"]
+default-members = [".", "crates/wayp-cli", "crates/terax-control-protocol"]
 resolver = "2"
 
 [workspace.package]
-version = "0.9.0"
+# fork: WayPoint versions start at 0.1.0
+version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
@@ -50,6 +53,7 @@ dirs = "7"
 log = "0.4"
 ignore = "0.4"
 grep-regex = "0.1"
+regex = "1" # fork: ralph ticket reader
 grep-searcher = "0.1"
 globset = "0.4"
 nucleo-matcher = "0.3"
@@ -73,6 +77,8 @@ futures-util = "0.3"
 tokio = { version = "1", default-features = false, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 tempfile = "3"
 which = "8.0.4"
+serde_norway = "0.9" # fork: workflow files
+tauri-plugin-dialog = "2" # fork: folder picker
 
 [dev-dependencies]
 proptest = "1"
@@ -116,6 +122,7 @@ windows-sys = { version = "0.61", features = [
 	"Win32_System_DataExchange",
 	"Win32_System_JobObjects",
 	"Win32_System_Ole",
+	"Win32_System_Power",
 	"Win32_System_SystemInformation",
 	"Win32_System_ProcessStatus",
 	"Win32_System_Threading",

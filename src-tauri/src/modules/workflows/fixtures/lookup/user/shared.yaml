@@ -1,0 +1,5 @@
+version: 1
+title: Shared (user)
+stages:
+  - name: A
+    skill: a

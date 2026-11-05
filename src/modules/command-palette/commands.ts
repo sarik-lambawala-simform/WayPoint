@@ -62,6 +62,10 @@ export type CommandPaletteActionContext = {
   openSpacesOverview: () => void;
   newSpace: () => void;
   switchSpace: (id: string) => void;
+  // fork: WayPoint workflows entry points
+  openRepo: () => void;
+  openFeature: () => void;
+  newFeature: () => void;
 };
 
 const noop = () => {};
@@ -125,6 +129,31 @@ export function createCommandItems(
       keywords: ["space", "session", "workspace", "group", "create"],
       icon: DashboardSquare01Icon,
       run: ctx.newSpace,
+    },
+    // fork: WayPoint workflows entry points
+    {
+      id: "workflows.openRepo",
+      title: "Open repo",
+      group: "Spaces",
+      keywords: ["repo", "repository", "folder", "git", "workflow", "space"],
+      icon: DashboardSquare01Icon,
+      run: ctx.openRepo,
+    },
+    {
+      id: "workflows.openFeature",
+      title: "Open feature",
+      group: "Spaces",
+      keywords: ["feature", "scratch", "workflow", "stage"],
+      icon: DashboardSquare01Icon,
+      run: ctx.openFeature,
+    },
+    {
+      id: "workflows.newFeature",
+      title: "New feature",
+      group: "Spaces",
+      keywords: ["feature", "scratch", "workflow", "create"],
+      icon: DashboardSquare01Icon,
+      run: ctx.newFeature,
     },
     ...ctx.spaces.map((sp) => ({
       id: `spaces.switch.${sp.id}`,

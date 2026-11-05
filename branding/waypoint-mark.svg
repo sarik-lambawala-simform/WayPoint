@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Placeholder mark for WayPoint: a route ending in a waypoint. Replace before a public release. -->
+  <rect width="1024" height="1024" rx="224" fill="#16181d"/>
+  <path d="M232 744 C 232 560, 440 640, 512 500 S 700 360, 792 280" fill="none" stroke="#5b8def" stroke-width="56" stroke-linecap="round" stroke-dasharray="1 112"/>
+  <circle cx="232" cy="744" r="52" fill="#5b8def"/>
+  <circle cx="792" cy="280" r="96" fill="#f5f6f8"/>
+  <circle cx="792" cy="280" r="44" fill="#16181d"/>
+</svg>

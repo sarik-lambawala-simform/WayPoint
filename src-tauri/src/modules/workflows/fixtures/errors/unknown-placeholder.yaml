@@ -1,0 +1,10 @@
+version: 1
+title: Unknown placeholder
+stages:
+  - name: One
+    skill: a
+  - name: Two
+    skill: b
+    args: "{{ feature }}/x"
+    produces:
+      - "{{ repo }}/spec.md"

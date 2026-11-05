@@ -1,0 +1,106 @@
+import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
+import type { Workflow } from "./lib/api";
+import type { RunView } from "./lib/loopRun";
+import { runChipLabel } from "./lib/runEnd";
+import type { Progress } from "./lib/progress";
+import { RUN_TONE } from "./LoopRunView";
+import { StageChips } from "./StageChips";
+
+type Props = {
+  workflow: Workflow;
+  featureDir: string;
+  selected: number;
+  onSelect: (index: number) => void;
+  /** Replaces the plain workflow title, e.g. with the workflow picker. */
+  picker?: ReactNode;
+  /** The route picker, under the workflow picker. */
+  routePicker?: ReactNode;
+  /** Each stage's state, shown as a chip on its cell. */
+  progress?: Progress | null;
+  /** Stage keys that have a claude running in their terminal. */
+  live?: Record<string, boolean>;
+  /** Forked stages that are out of date, by stage key. */
+  outOfDate?: Record<string, string>;
+  /** The newest run: its status, and once it ended its reason, shown as a chip on the Loop's cell. */
+  run?: RunView | null;
+};
+
+/** Workflow name and feature path first, then one cell per stage in workflow order. */
+export function StageBar({
+  workflow,
+  featureDir,
+  selected,
+  onSelect,
+  picker,
+  routePicker,
+  progress,
+  live,
+  outOfDate,
+  run,
+}: Props) {
+  return (
+    <div
+      className="flex shrink-0 items-stretch overflow-x-auto border-b border-border/60"
+      role="tablist"
+      aria-label="Stages"
+    >
+      <div className="flex min-w-48 max-w-72 shrink-0 flex-col justify-center gap-0.5 border-r border-border/60 px-3 py-2">
+        {picker ?? (
+          <span className="truncate text-xs font-medium">{workflow.title}</span>
+        )}
+        {routePicker}
+        <span
+          className="truncate text-[11px] text-muted-foreground"
+          title={featureDir}
+        >
+          {featureDir}
+        </span>
+      </div>
+      {workflow.stages.map((stage, i) => (
+        <button
+          key={stage.name}
+          type="button"
+          role="tab"
+          aria-selected={i === selected}
+          onClick={() => onSelect(i)}
+          className={cn(
+            "flex shrink-0 items-center gap-1.5 border-r border-border/60 px-4 py-2 text-xs transition-colors",
+            i === selected
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent/50",
+          )}
+        >
+          <span className="tabular-nums text-[11px] opacity-60">{i + 1}</span>
+          <span>{progress?.stages[i]?.name ?? stage.name}</span>
+          {live?.[stage.name] && (
+            <span
+              role="img"
+              aria-label="claude is running"
+              title="claude is running"
+              className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+            />
+          )}
+          {progress?.stages[i] && (
+            <StageChips
+              state={progress.stages[i].state}
+              repoScoped={progress.stages[i].repoScoped}
+              outOfDate={Boolean(outOfDate?.[stage.name])}
+            />
+          )}
+          {stage.run === "loop" && run && (
+            <span
+              data-testid="run-chip"
+              className={cn(
+                "shrink-0 rounded px-1.5 py-px text-[10px] leading-4",
+                RUN_TONE[run.status],
+              )}
+            >
+              {runChipLabel(run)}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}

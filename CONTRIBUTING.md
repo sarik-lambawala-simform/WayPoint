@@ -1,4 +1,6 @@
-# Contributing to Terax
+# Contributing to WayPoint
+
+WayPoint is a hard fork of Terax (`crynta/terax-ai`): a new application built from the fork, not a copy that follows Terax. The rest of this file is Terax's contribution guide and is kept as upstream wrote it, except where it says otherwise. Read [Syncing with upstream Terax](#syncing-with-upstream-terax) before touching upstream files.
 
 Terax is a solo-maintained project with a strong product direction. Contributions are welcome, but **alignment matters more than volume**.
 
@@ -258,3 +260,22 @@ Don't file them as public issues. See [SECURITY.md](SECURITY.md).
 ## License
 
 By contributing you agree your work is licensed under [Apache-2.0](LICENSE). No CLA required.
+
+## Syncing with upstream Terax
+
+WayPoint is a hard fork. Nothing goes to `crynta/terax-ai`: no PRs, issues or patches. There is no sync schedule. We pull an upstream release tag only when it has a major update we need. The rules for a pull:
+
+- **Release tags only.** Merge an upstream release tag (for example `v0.9.1`), never upstream `main`. The remote is `upstream` (`https://github.com/crynta/terax-ai.git`); run `git fetch upstream --tags`.
+- **Through an `upstream-sync/<tag>` branch.** Create `upstream-sync/v0.9.1` from `main`, merge the tag into it, and open a PR to `main`. CI runs on `upstream-sync/*` branches and on the PR, with upstream's tests and ours.
+- **Never cherry-pick.** Not a single upstream commit, not even a fix the build needs. If we need a fix sooner, make it ourselves as a marked edit.
+- **Never rebase or force-push `main`.** Merge commits only, so `main`'s history stays intact.
+
+A fix to upstream code is our own marked edit and stays in WayPoint for good. Fork-only patches are for workflow-specific changes.
+
+### Marking edits to upstream files
+
+- Every edit to an upstream file carries a `// fork:` marker (`# fork:` in YAML, TOML and shell, `; fork:` in NSIS). This keeps merges easy to review and meets Apache-2.0's duty to mark changed files.
+- JSON cannot carry comments, so edits to JSON files (`tauri.conf.json`, `tauri.windows.conf.json`) are listed in [FORK.md](FORK.md).
+- Our own code lives in its own modules: `src-tauri/src/modules/{workflows,ralph}` and `src/modules/{workflows,ralph}` (React behind an `index.ts` barrel). Edits to upstream files stay small.
+- Keep Terax's internal names (`TERAX_TERMINAL`, `TERAX_PANE_ID`, the `notify;Terax;` OSC marker, hook commands, module names, `TERAX.md`). Only user-visible names and names that would clash with an installed Terax are renamed.
+- Keep `LICENSE` and the bundled MIT notices (ghostty-web, Ghostty, Restty, xterm.js).

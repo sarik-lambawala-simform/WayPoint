@@ -2,9 +2,11 @@ import { MarkdownCode } from "@/components/ai-elements/markdown-code";
 import { cn } from "@/lib/utils";
 import { currentWorkspaceEnv } from "@/modules/workspace";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
-import { MarkdownLink } from "./MarkdownLink";
+import { listenFsChanged } from "@/modules/explorer/lib/watch"; // fork
+import { fsChangeTouches } from "./lib/markdownLinks"; // fork
+import { MarkdownLink, type MarkdownLinkProps } from "./MarkdownLink";
 import { MarkdownViewToggle } from "./MarkdownViewToggle";
 
 type ReadResult =
@@ -23,16 +25,56 @@ type Props = {
   path: string;
   visible: boolean;
   onSetView: (mode: "rendered" | "raw") => void;
+  onOpenMarkdown?: (path: string) => void; // fork
 };
 
-const components = { a: MarkdownLink, code: MarkdownCode };
 
-export function MarkdownPreviewPane({ path, visible, onSetView }: Props) {
+export function MarkdownPreviewPane({
+  path,
+  visible,
+  onSetView,
+  onOpenMarkdown, // fork
+}: Props) {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
+  // fork: bumped when the file changes on disk.
+  const [reloadTick, setReloadTick] = useState(0);
+  const components = useMemo(
+    () => ({
+      a: (props: MarkdownLinkProps) => (
+        <MarkdownLink
+          {...props}
+          currentPath={path}
+          onOpenMarkdown={onOpenMarkdown}
+        />
+      ),
+      code: MarkdownCode,
+    }),
+    [path, onOpenMarkdown],
+  );
+
+  // fork: reload when the file changes on disk. The old content stays on
+  // screen until the new content lands, so the scroll position is kept.
+  useEffect(() => {
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    void listenFsChanged((paths) => {
+      if (fsChangeTouches(paths, path)) setReloadTick((n) => n + 1);
+    }).then((un) => {
+      if (alive) unlisten = un;
+      else un();
+    });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, [path]);
+
+  useEffect(() => {
+    setStatus({ kind: "loading" });
+  }, [path]);
 
   useEffect(() => {
     let cancelled = false;
-    setStatus({ kind: "loading" });
     invoke<ReadResult>("fs_read_file", {
       path,
       workspace: currentWorkspaceEnv(),
@@ -48,12 +90,18 @@ export function MarkdownPreviewPane({ path, visible, onSetView }: Props) {
         }
       })
       .catch((e) => {
-        if (!cancelled) setStatus({ kind: "error", message: String(e) });
+        // fork: a failed re-read (a save mid-rename) keeps the content shown.
+        if (!cancelled)
+          setStatus((s) =>
+            s.kind === "ready" && reloadTick > 0
+              ? s
+              : { kind: "error", message: String(e) },
+          );
       });
     return () => {
       cancelled = true;
     };
-  }, [path]);
+  }, [path, reloadTick]);
 
   return (
     <div

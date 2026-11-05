@@ -2,6 +2,7 @@ pub mod modules;
 
 #[cfg(target_os = "macos")]
 use modules::app_menu;
+use modules::workflows; // fork: WayPoint module
 use modules::{
     agent, control, fs, git, history, lsp, net, pty, secrets, shell, vibrancy, workspace,
 };
@@ -206,6 +207,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init()) // fork: folder picker for "Open repo"
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(
@@ -341,6 +343,27 @@ pub fn run() {
             workspace::wsl_default_distro,
             workspace::ipc::wsl_home,
             workspace::workspace_authorize,
+            workflows::commands::workflows_shipped, // fork
+            workflows::commands::workflows_catalog, // fork
+            workflows::commands::workflows_read_progress, // fork
+            workflows::commands::workflows_record_progress, // fork
+            workflows::commands::workflows_list_files, // fork
+            workflows::commands::workflows_run_check, // fork
+            workflows::commands::workflows_build_tickets, // fork
+            workflows::commands::workflows_ticket_mark_done, // fork
+            workflows::commands::workflows_map_facts, // fork
+            workflows::commands::workflows_session_turns, // fork
+            workflows::commands::workflows_sessions_present, // fork
+            workflows::commands::workflows_wsl_check, // fork
+            workflows::commands::workflows_loop_view, // fork
+            workflows::commands::workflows_loop_live, // fork
+            workflows::commands::workflows_loop_start, // fork
+            workflows::commands::workflows_loop_stop, // fork
+            workflows::commands::workflows_loop_watch, // fork
+            workflows::commands::workflows_loop_unwatch, // fork
+            workflows::commands::workflows_ticket_read, // fork
+            workflows::commands::workflows_ticket_runs, // fork
+            workflows::commands::workflows_ticket_window, // fork
             workspace::workspace_current_dir,
             control::control_frontend_ready,
             control::control_respond,
