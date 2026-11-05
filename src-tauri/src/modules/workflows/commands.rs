@@ -236,18 +236,31 @@ pub struct WslTarget {
     pub linux_root: String,
 }
 
-/// Starts the script detached in the repo root. `args` and `launch_line` are what the launch form
-/// showed; the repo having a live run refuses the start.
+/// Starts the script detached in the repo root: the repo's own copy, or else the app's. `args`
+/// and `launch_line` are what the launch form showed; the repo having a live run refuses the start.
 #[tauri::command]
 pub async fn workflows_loop_start(
+    app: tauri::AppHandle,
     repo_root: String,
     args: Vec<String>,
     launch_line: String,
     wsl: Option<WslTarget>,
 ) -> Result<(), String> {
+    // The app's own copy of the script, run in a repo that has none.
+    let bundled = {
+        use tauri::Manager;
+        app.path().resource_dir().ok().map(|d| d.join("ralph"))
+    };
     tokio::task::spawn_blocking(move || {
+        let bundled = bundled.as_deref();
         let Some(target) = wsl else {
-            return launch::start(&PathBuf::from(repo_root), &args, &launch_line, None);
+            return launch::start(
+                &PathBuf::from(repo_root),
+                &args,
+                &launch_line,
+                None,
+                bundled,
+            );
         };
         // The distro check comes first: a tool the script needs and the distro lacks is named
         // here, before any run folder is made.
@@ -261,7 +274,13 @@ pub async fn workflows_loop_start(
             distro: &target.distro,
             linux_root: &target.linux_root,
         };
-        launch::start(&PathBuf::from(repo_root), &args, &launch_line, Some(&wsl))
+        launch::start(
+            &PathBuf::from(repo_root),
+            &args,
+            &launch_line,
+            Some(&wsl),
+            bundled,
+        )
     })
     .await
     .map_err(|e| e.to_string())?

@@ -109,7 +109,10 @@ export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-/** The command the app starts, as a shell would read it. */
+/**
+ * The command the app starts, as a shell would read it. In a repo without its own `ralph/` the
+ * app runs its bundled copy from `<run dir>/ralph/`, and the line stored with the run says so.
+ */
 export function launchLine(o: LaunchOptions, ctx: LaunchContext): string {
   const script = ["setsid", SCRIPT, ...launchArgs(o, ctx).map(shellQuote)];
   const via = ctx.wsl
