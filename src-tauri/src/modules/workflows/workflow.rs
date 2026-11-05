@@ -516,10 +516,41 @@ mod tests {
         assert_eq!(way.args.as_deref(), Some("{{ feature }}"));
         let spec = &by("Spec").routes["wayfinder"];
         assert_eq!(spec.session, Some(Session::Fresh));
-        assert_eq!(spec.args.as_deref(), Some("{{ feature }}/map.md"));
+        assert_eq!(
+            spec.args.as_deref(),
+            Some("{{ feature }}/map.md. Write the spec to {{ feature }}/spec.md.")
+        );
         assert_eq!(by("Grill").mode, Mode::Interactive);
         assert_eq!(by("Grill").ask, Ask::Required);
         assert_eq!(by("Spec").ask, Ask::Optional);
+    }
+
+    /// Spec and Tickets name the feature folder on every route: given none, the skills invent a
+    /// slug of their own and write outside the folder the app watches.
+    #[test]
+    fn shipped_spec_and_tickets_write_into_the_feature_folder() {
+        let w = shipped_workflow().unwrap();
+        let vars = Vars {
+            feature: ".scratch/login",
+            workflow_dir: "/w",
+        };
+        for (stage, wants) in [
+            ("Spec", ".scratch/login/spec.md"),
+            ("Tickets", ".scratch/login/issues/"),
+        ] {
+            let s = w.stages.iter().find(|s| s.name == stage).unwrap();
+            for route in [None, Some("wayfinder")] {
+                let args = route
+                    .and_then(|r| s.routes.get(r))
+                    .and_then(|o| o.args.as_deref())
+                    .or(s.args.as_deref())
+                    .unwrap_or("");
+                assert!(
+                    substitute(args, &vars).contains(wants),
+                    "{stage} on {route:?} sends {args:?}, which does not name {wants}"
+                );
+            }
+        }
     }
 
     #[test]

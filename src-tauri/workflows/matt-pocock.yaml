@@ -26,12 +26,17 @@ stages:
   - name: Spec
     skill: to-spec
     session: continue
+    # The folder is named so the skill writes into it rather than a slug of its own.
+    args: "Write the spec to {{ feature }}/spec.md."
     produces: [spec.md]
     routes:
-      wayfinder: { session: fresh, args: "{{ feature }}/map.md" }
+      wayfinder:
+        session: fresh
+        args: "{{ feature }}/map.md. Write the spec to {{ feature }}/spec.md."
   - name: Tickets
     skill: to-tickets
     session: continue
+    args: "{{ feature }}/spec.md. Write the tickets to {{ feature }}/issues/."
     produces: [issues/*.md]
     done_when: tickets
   - name: Loop
