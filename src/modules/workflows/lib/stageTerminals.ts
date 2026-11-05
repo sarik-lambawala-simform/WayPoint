@@ -38,6 +38,16 @@ export function parseStarts(raw: unknown): Record<string, number> {
   return out;
 }
 
+/** The stored `key -> words` map, keeping only strings. */
+export function parseWords(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
 type TerminalStatus = "running" | "ended";
 
 export type TerminalEntry = {
@@ -49,6 +59,8 @@ export type TerminalEntry = {
   status: TerminalStatus;
   /** A `claude -p` stage: nothing to resume. */
   unattended: boolean;
+  /** What the user wrote when starting it, sent after the stage's command; a re-run offers it again. */
+  words: string;
 };
 
 /** By the stage's plain name. */
@@ -59,6 +71,7 @@ export type TerminalAction =
       type: "restore";
       ids: Record<string, string>;
       starts?: Record<string, number>;
+      words?: Record<string, string>;
     }
   | {
       type: "start";
@@ -67,6 +80,7 @@ export type TerminalAction =
       startedAt: number;
       leaf: number;
       unattended: boolean;
+      words: string;
     }
   | { type: "claude-exited"; key: string }
   | { type: "shell-exited"; key: string }
@@ -87,6 +101,7 @@ export function reduceTerminals(
           leaf: null,
           status: "ended",
           unattended: false,
+          words: action.words?.[key] ?? "",
         };
       }
       return next;
@@ -100,6 +115,7 @@ export function reduceTerminals(
           leaf: action.leaf,
           status: "running",
           unattended: action.unattended,
+          words: action.words,
         },
       };
     case "claude-exited": {
@@ -130,6 +146,7 @@ const store = new LazyStore("waypoint-stage-sessions.json", {
 });
 const KEY = "sessions";
 const STARTS_KEY = "started";
+const WORDS_KEY = "words";
 
 async function loadSessions(): Promise<Record<string, string>> {
   return parseSessions(await store.get<unknown>(KEY));
@@ -143,27 +160,35 @@ export function saveSession(
   stageKey: string,
   sessionId: string,
   startedAt: number,
+  words: string,
 ): Promise<void> {
   const next = writes.then(async () => {
     const all = await loadSessions();
     const starts = parseStarts(await store.get<unknown>(STARTS_KEY));
+    const stored = parseWords(await store.get<unknown>(WORDS_KEY));
     const key = sessionKey(featureDir, stageKey);
     all[key] = sessionId;
     starts[key] = startedAt;
+    if (words) stored[key] = words;
+    else delete stored[key];
     await store.set(KEY, all);
     await store.set(STARTS_KEY, starts);
+    await store.set(WORDS_KEY, stored);
   });
   writes = next.catch(() => {});
   return next;
 }
 
 /** The ids and start times stored for one feature folder, by stage key. */
-export async function loadFeatureSessions(
-  featureDir: string,
-): Promise<{ ids: Record<string, string>; starts: Record<string, number> }> {
+export async function loadFeatureSessions(featureDir: string): Promise<{
+  ids: Record<string, string>;
+  starts: Record<string, number>;
+  words: Record<string, string>;
+}> {
   const prefix = `${featureDir}\u0000`;
   const ids: Record<string, string> = {};
   const starts: Record<string, number> = {};
+  const words: Record<string, string> = {};
   for (const [k, id] of Object.entries(await loadSessions())) {
     if (k.startsWith(prefix)) ids[k.slice(prefix.length)] = id;
   }
@@ -172,5 +197,10 @@ export async function loadFeatureSessions(
   )) {
     if (k.startsWith(prefix)) starts[k.slice(prefix.length)] = t;
   }
-  return { ids, starts };
+  for (const [k, w] of Object.entries(
+    parseWords(await store.get<unknown>(WORDS_KEY)),
+  )) {
+    if (k.startsWith(prefix)) words[k.slice(prefix.length)] = w;
+  }
+  return { ids, starts, words };
 }

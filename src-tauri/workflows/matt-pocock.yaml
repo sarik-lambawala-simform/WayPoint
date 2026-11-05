@@ -9,6 +9,7 @@ stages:
     produces: [docs/agents/issue-tracker.md]
   - name: Grill
     skill: grill-with-docs
+    ask: required
     done_when: confirm
     routes:
       wayfinder:

@@ -23,6 +23,7 @@ const entry = (n: number, startedAt: number | null): TerminalEntry => ({
   leaf: null,
   status: "ended",
   unattended: false,
+  words: "",
 });
 
 const stages: ForkStage[] = [

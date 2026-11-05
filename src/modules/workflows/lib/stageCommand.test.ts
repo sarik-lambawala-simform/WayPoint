@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canStart,
   featureRel,
   forkLine,
   freshNote,
@@ -12,6 +13,7 @@ import {
   substituteVars,
   ticketPathOf,
   unattendedLine,
+  withWords,
   workOnThisInput,
 } from "./stageCommand";
 
@@ -26,6 +28,40 @@ describe("the claude command lines", () => {
   it("forks the previous stage's session under a new id the app picked", () => {
     expect(forkLine(ID, OTHER)).toBe(
       `claude --resume ${ID} --fork-session --session-id ${OTHER}`,
+    );
+  });
+
+  it("starts a fresh session with the stage's command as its first message", () => {
+    expect(freshLine(ID, "/grill-with-docs")).toBe(
+      `claude --session-id ${ID} -- '/grill-with-docs'`,
+    );
+  });
+
+  it("forks with the stage's command as the fork's first message", () => {
+    expect(forkLine(ID, OTHER, "/to-spec .scratch/f")).toBe(
+      `claude --resume ${ID} --fork-session --session-id ${OTHER} -- '/to-spec .scratch/f'`,
+    );
+  });
+
+  it("passes a prompt starting with a dash as the prompt, not an option", () => {
+    expect(freshLine(ID, "-v")).toBe(`claude --session-id ${ID} -- '-v'`);
+  });
+
+  it("passes the shell's special characters through to claude untouched", () => {
+    expect(freshLine(ID, 'it\'s !! $HOME "x" `y` \\')).toBe(
+      `claude --session-id ${ID} -- 'it'\\''s !! $HOME "x" \`y\` \\'`,
+    );
+  });
+
+  it("keeps a multi-line first message as one argument", () => {
+    expect(forkLine(ID, OTHER, "a\nb")).toBe(
+      `claude --resume ${ID} --fork-session --session-id ${OTHER} -- 'a\nb'`,
+    );
+  });
+
+  it("turns a carriage return into a newline, so it cannot submit the line early", () => {
+    expect(freshLine(ID, "a\r\nb\rc")).toBe(
+      `claude --session-id ${ID} -- 'a\nb\nc'`,
     );
   });
 
@@ -47,20 +83,22 @@ describe("the claude command lines", () => {
     expect(resumeLine(ID)).toBe(`claude --resume ${ID}`);
   });
 
-  it("runs an unattended stage as claude -p with the command in double quotes", () => {
+  it("runs an unattended stage as claude -p with the command in single quotes", () => {
     expect(unattendedLine("/to-spec .scratch/f")).toBe(
-      'claude -p "/to-spec .scratch/f"',
+      "claude -p -- '/to-spec .scratch/f'",
     );
   });
 
-  it("escapes what a double-quoted shell string would expand", () => {
-    expect(unattendedLine('say "hi" $HOME `x` \\')).toBe(
-      'claude -p "say \\"hi\\" \\$HOME \\`x\\` \\\\"',
-    );
+  it("passes an unattended prompt starting with a dash as the prompt", () => {
+    expect(unattendedLine("-v")).toBe("claude -p -- '-v'");
+  });
+
+  it("passes an unattended prompt's special characters through untouched", () => {
+    expect(unattendedLine("it's $HOME")).toBe("claude -p -- 'it'\\''s $HOME'");
   });
 
   it("keeps a multi-line prompt as one argument", () => {
-    expect(unattendedLine("a\nb")).toBe('claude -p "a\nb"');
+    expect(unattendedLine("a\nb")).toBe("claude -p -- 'a\nb'");
   });
 
   it("refuses an id that is not a plain uuid", () => {
@@ -160,6 +198,36 @@ describe("Work on this", () => {
   it("names the ticket by its path from the repo root", () => {
     expect(ticketPathOf("/r", "/r/.scratch/f", "18-human.md")).toBe(
       ".scratch/f/issues/18-human.md",
+    );
+  });
+});
+
+describe("the user's words before a stage starts", () => {
+  it("keeps Start back on a stage that asks for words until there are some", () => {
+    expect(canStart("required", "")).toBe(false);
+    expect(canStart("required", "  \n ")).toBe(false);
+    expect(canStart("required", "a get user API")).toBe(true);
+  });
+
+  it("lets an optional stage, or one that does not say, start without words", () => {
+    expect(canStart("optional", "")).toBe(true);
+    expect(canStart(undefined, "")).toBe(true);
+    expect(canStart(null, "")).toBe(true);
+  });
+
+  it("sends the words after the command, as one first message", () => {
+    expect(withWords("/grill-with-docs", "  a get user API \n")).toBe(
+      "/grill-with-docs a get user API",
+    );
+    expect(withWords("/to-tickets f/spec.md", "small ones")).toBe(
+      "/to-tickets f/spec.md small ones",
+    );
+    expect(withWords("/to-spec", "   ")).toBe("/to-spec");
+  });
+
+  it("puts the command and the words in one shell word on claude's line", () => {
+    expect(freshLine(ID, withWords("/grill-with-docs", "it's done!"))).toBe(
+      `claude --session-id ${ID} -- '/grill-with-docs it'\\''s done!'`,
     );
   });
 });

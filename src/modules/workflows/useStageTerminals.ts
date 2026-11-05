@@ -46,13 +46,15 @@ export function disposeClosedFeatures(openDirs: Set<string>) {
 export type StartRequest = {
   /** The stage's plain name. */
   key: string;
-  /** `/<skill> <args>` or the prompt; typed into claude once it is up. */
+  /** `/<skill> <args>` or the prompt; claude's first message, passed on its command line. */
   input: string;
   unattended: boolean;
   /** The session this stage forks (`session: continue`); null starts a fresh session. */
   forkFrom?: string | null;
   /** A shell line (an `echo`) typed before claude starts. */
   note?: string;
+  /** What the user wrote in the stage's composer, already inside `input`; stored for a re-run. */
+  words: string;
 };
 
 /**
@@ -81,7 +83,8 @@ export function useStageTerminals(
   useEffect(() => {
     let live = true;
     loadFeatureSessions(featureDir).then(
-      ({ ids, starts }) => live && dispatch({ type: "restore", ids, starts }),
+      ({ ids, starts, words }) =>
+        live && dispatch({ type: "restore", ids, starts, words }),
       (e) => console.error("could not read the stage sessions", e),
     );
     return () => {
@@ -116,8 +119,8 @@ export function useStageTerminals(
   }, []);
 
   const launch = useCallback(
-    (leaf: number, line: string, input: string | null, note?: string) =>
-      launchClaude(repoRoot, leaf, line, input, note),
+    (leaf: number, line: string, note?: string) =>
+      launchClaude(repoRoot, leaf, line, note),
     [repoRoot],
   );
 
@@ -126,30 +129,45 @@ export function useStageTerminals(
    * re-run takes a new session id (forked again from `forkFrom`) and keeps the shell it has.
    */
   const start = useCallback(
-    ({ key, input, unattended, forkFrom, note: extra }: StartRequest) => {
+    ({
+      key,
+      input,
+      unattended,
+      forkFrom,
+      note: extra,
+      words,
+    }: StartRequest) => {
       const previous = entriesRef.current[key];
       if (previous?.status === "running") return;
       const sessionId = crypto.randomUUID();
       const startedAt = Date.now();
       const leaf = previous?.leaf ?? allocateStageLeaf();
       if (previous?.leaf == null) remember(featureDir, leaf);
-      dispatch({ type: "start", key, sessionId, startedAt, leaf, unattended });
+      dispatch({
+        type: "start",
+        key,
+        sessionId,
+        startedAt,
+        leaf,
+        unattended,
+        words,
+      });
       if (!unattended)
-        void saveSession(featureDir, key, sessionId, startedAt).catch((e) =>
-          console.error("could not store the stage session", e),
+        void saveSession(featureDir, key, sessionId, startedAt, words).catch(
+          (e) => console.error("could not store the stage session", e),
         );
       const line = unattended
         ? unattendedLine(input)
         : forkFrom
-          ? forkLine(forkFrom, sessionId)
-          : freshLine(sessionId);
+          ? forkLine(forkFrom, sessionId, input)
+          : freshLine(sessionId, input);
       const note = joinNotes([
         previous && !previous.unattended
           ? rerunNote(previous.sessionId)
           : undefined,
         extra,
       ]);
-      void launch(leaf, line, unattended ? null : input, note);
+      void launch(leaf, line, note);
     },
     [featureDir, launch],
   );
@@ -162,7 +180,7 @@ export function useStageTerminals(
       const leaf = e.leaf ?? allocateStageLeaf();
       if (e.leaf === null) remember(featureDir, leaf);
       dispatch({ type: "resume", key, leaf });
-      void launch(leaf, resumeLine(e.sessionId), null);
+      void launch(leaf, resumeLine(e.sessionId));
     },
     [featureDir, launch],
   );

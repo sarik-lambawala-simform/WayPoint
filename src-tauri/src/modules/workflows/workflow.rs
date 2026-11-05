@@ -33,6 +33,16 @@ pub enum Session {
     Fresh,
 }
 
+/// Whether starting the stage asks the user for words to send with its command. `required`
+/// keeps Start disabled until there are some; `optional` (the default) starts without them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Ask {
+    Required,
+    #[default]
+    Optional,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Scope {
@@ -98,6 +108,8 @@ pub struct RouteOverride {
     #[serde(default)]
     pub mode: Option<Mode>,
     #[serde(default)]
+    pub ask: Option<Ask>,
+    #[serde(default)]
     pub session: Option<Session>,
     #[serde(default)]
     pub produces: Option<Vec<String>>,
@@ -123,6 +135,8 @@ pub struct Stage {
     pub args: Option<String>,
     #[serde(default)]
     pub mode: Mode,
+    #[serde(default)]
+    pub ask: Ask,
     #[serde(default)]
     pub session: Option<Session>,
     #[serde(default)]
@@ -504,6 +518,8 @@ mod tests {
         assert_eq!(spec.session, Some(Session::Fresh));
         assert_eq!(spec.args.as_deref(), Some("{{ feature }}/map.md"));
         assert_eq!(by("Grill").mode, Mode::Interactive);
+        assert_eq!(by("Grill").ask, Ask::Required);
+        assert_eq!(by("Spec").ask, Ask::Optional);
     }
 
     #[test]
@@ -611,6 +627,22 @@ mod tests {
             e.message
         );
         assert!(parse_workflow("x", "x.yaml", &stage("{ check: a, extra: b }")).is_err());
+    }
+
+    #[test]
+    fn ask_defaults_to_optional_reads_required_and_names_an_unknown_word() {
+        let stage = |ask: &str| {
+            format!("version: 1\ntitle: T\nstages:\n  - name: A\n    skill: a\n{ask}")
+        };
+        let w = parse_workflow("x", "x.yaml", &stage("")).unwrap();
+        assert_eq!(w.stages[0].ask, Ask::Optional);
+        let w = parse_workflow("x", "x.yaml", &stage("    ask: required\n")).unwrap();
+        assert_eq!(w.stages[0].ask, Ask::Required);
+        assert_eq!(serde_json::to_string(&Ask::Required).unwrap(), "\"required\"");
+        let routed = stage("    routes:\n      r: { ask: required }\n");
+        let w = parse_workflow("x", "x.yaml", &routed).unwrap();
+        assert_eq!(w.stages[0].routes["r"].ask, Some(Ask::Required));
+        assert!(parse_workflow("x", "x.yaml", &stage("    ask: always\n")).is_err());
     }
 
     #[test]

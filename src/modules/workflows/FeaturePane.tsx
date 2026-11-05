@@ -29,8 +29,10 @@ import {
   featureRel,
   FRESH_WHY,
   freshNote,
+  canStart,
   missingSessionInput,
   stageInput,
+  withWords,
 } from "./lib/stageCommand";
 import { Button } from "@/components/ui/button";
 import { IS_WINDOWS } from "@/lib/platform";
@@ -39,6 +41,7 @@ import { LoopRunView } from "./LoopRunView";
 import { type OpenCommitFile, useTicketTerminals } from "./TicketTerminals";
 import { RoutePicker } from "./RoutePicker";
 import { StageBar } from "./StageBar";
+import { StageComposer } from "./StageComposer";
 import { StageHeader } from "./StageHeader";
 import { StageTerminalHost } from "./StageTerminalHost";
 import { useBehindTurns } from "./useBehind";
@@ -153,6 +156,10 @@ function LoadedPane({
   const working = useWorkingStages(terminals.entries);
   const presence = useSessionsPresent(repoRoot, terminals.entries);
   const [blocked, setBlocked] = useState<Blocked | null>(null);
+  /** The started stage whose composer is open for a re-run. */
+  const [composing, setComposing] = useState<string | null>(null);
+  /** The words a stage's composer sent, by stage, until the stage starts (a block may come between). */
+  const wordsOf = useRef<Record<string, string>>({});
   const wsl = useWslGate();
   /** Stages that started fresh for want of a session to continue, and what to say about it. */
   const [freshNotes, setFreshNotes] = useState<Record<string, string>>({});
@@ -221,6 +228,7 @@ function LoadedPane({
   if (blockedStage.current !== shownIndex) {
     blockedStage.current = shownIndex;
     if (blocked) setBlocked(null);
+    if (composing) setComposing(null);
   }
   // Waiting for a mid-turn claude: fork as soon as its turn ends.
   const waitingOn =
@@ -369,6 +377,12 @@ function LoadedPane({
   ) => {
     if (!shown || input === null) return;
     if (entryOfShown?.status === "running") return;
+    // Every start goes through the composer: a stage that needs the user's words never runs without.
+    const words = wordsOf.current[shown.key] ?? "";
+    if (!canStart(stageDef.ask, words)) {
+      setComposing(shown.key);
+      return;
+    }
     // On Windows a stage starts only when the space is on WSL and the distro has its tools.
     if (IS_WINDOWS && !opts.checked) {
       if (wsl.gate.kind === "checking") return;
@@ -377,7 +391,7 @@ function LoadedPane({
         .then((ok) => ok && startShown({ ...opts, checked: true }));
       return;
     }
-    let typed = input;
+    let firstMessage = input;
     let forkFrom: string | null = null;
     let freshWhy: string | null = null;
     if (opts.fresh) {
@@ -399,7 +413,7 @@ function LoadedPane({
           setBlocked({ key: shown.key, kind: "missing", goBack: plan.goBack });
           return;
         }
-        typed = fallback;
+        firstMessage = fallback;
         freshWhy = "No session to continue: started from the spec instead.";
       } else if (plan.kind === "fork") {
         if (plan.midTurn && !opts.forkAnyway) {
@@ -414,8 +428,10 @@ function LoadedPane({
         forkFrom = plan.from;
       }
     }
+    firstMessage = withWords(firstMessage, words);
     setBlocked(null);
     const key = shown.key;
+    delete wordsOf.current[key];
     setFreshNotes((prev) => {
       const { [key]: _drop, ...rest } = prev;
       return freshWhy ? { ...rest, [key]: freshWhy } : rest;
@@ -427,14 +443,21 @@ function LoadedPane({
       );
     terminals.start({
       key,
-      input: typed,
+      input: firstMessage,
       unattended: unattendedStage,
       forkFrom,
       note: freshWhy ? freshNote() : undefined,
+      words: words.trim(),
     });
   };
   startAgain.current = () => startShown();
-  const rerun = () => startShown();
+  /** A re-run asks again, offering the last run's words. */
+  const rerun = () => shown && setComposing(shown.key);
+  const composeFrom = (key: string) => (words: string) => {
+    wordsOf.current[key] = words;
+    setComposing(null);
+    startShown();
+  };
   const noSession = noSessionHere(entryOfShown, presence);
   const blockedHere = Boolean(blocked && shown && blocked.key === shown.key);
   const rerunnable = Boolean(
@@ -444,6 +467,13 @@ function LoadedPane({
   // Once the Loop has been shown its ticket terminals stay mounted behind the other stages.
   if (loopShown && !loopSeen) setLoopSeen(true);
   const terminalShown = Boolean(entryOfShown && entryOfShown.leaf !== null);
+  const composerShown = Boolean(
+    shown &&
+      input !== null &&
+      !loopShown &&
+      entryOfShown?.status !== "running" &&
+      (!entryOfShown || composing === shown.key),
+  );
   const failedHere = Boolean(failed && shown && failed.key === shown.key);
   const notStartedNote = entryOfShown
     ? noSession
@@ -542,7 +572,11 @@ function LoadedPane({
           <StageTerminalHost
             entries={terminals.entries}
             shownKey={
-              terminalShown && !failedHere && !blockedHere && !loopShown
+              terminalShown &&
+              !failedHere &&
+              !blockedHere &&
+              !composerShown &&
+              !loopShown
                 ? (shown?.key ?? null)
                 : null
             }
@@ -586,132 +620,149 @@ function LoadedPane({
             />
           </div>
         )}
-        {!loopShown && (failedHere || blockedHere || !terminalShown) && (
-          <div className="absolute inset-0 z-10 flex flex-col bg-background">
-            {failedHere && failed ? (
-              <CheckOutput result={failed.result} />
-            ) : blockedHere && blocked && shown ? (
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
-                {blocked.kind === "missing" ? (
-                  <>
-                    <span>
-                      {blocked.goBack !== null
-                        ? `${stageName(blocked.goBack)}'s session is not on this machine, so ${shown.name} has nothing to continue.`
-                        : `There is no session on this machine for ${shown.name} to continue.`}
-                    </span>
-                    <div className="flex gap-2">
-                      {blocked.goBack !== null && (
+        {!loopShown &&
+          (failedHere || blockedHere || !terminalShown || composerShown) && (
+            <div className="absolute inset-0 z-10 flex flex-col bg-background">
+              {failedHere && failed ? (
+                <CheckOutput result={failed.result} />
+              ) : blockedHere && blocked && shown ? (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
+                  {blocked.kind === "missing" ? (
+                    <>
+                      <span>
+                        {blocked.goBack !== null
+                          ? `${stageName(blocked.goBack)}'s session is not on this machine, so ${shown.name} has nothing to continue.`
+                          : `There is no session on this machine for ${shown.name} to continue.`}
+                      </span>
+                      <div className="flex gap-2">
+                        {blocked.goBack !== null && (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setBlocked(null);
+                              setSelected(blocked.goBack);
+                            }}
+                          >
+                            Go back to {stageName(blocked.goBack)}
+                          </Button>
+                        )}
                         <Button
                           size="sm"
-                          onClick={() => {
-                            setBlocked(null);
-                            setSelected(blocked.goBack);
-                          }}
+                          variant="outline"
+                          onClick={() => startShown({ fresh: true })}
                         >
-                          Go back to {stageName(blocked.goBack)}
+                          Start {shown.name} fresh anyway
                         </Button>
-                      )}
+                      </div>
+                    </>
+                  ) : blocked.waiting ? (
+                    <>
+                      <span>
+                        Waiting for {blocked.parentKey} to finish its turn, then{" "}
+                        {shown.name} forks it.
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => startShown({ forkAnyway: true })}
+                        >
+                          Fork now
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setBlocked(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        {blocked.parentKey}'s claude is mid-turn. Forking it now
+                        copies the session as saved, without the answer still
+                        being written.
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            setBlocked({ ...blocked, waiting: true })
+                          }
+                        >
+                          Wait for {blocked.parentKey}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => startShown({ forkAnyway: true })}
+                        >
+                          Fork anyway
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setBlocked(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : composerShown && shown && input !== null ? (
+                <StageComposer
+                  key={`${shown.key}:${entryOfShown?.sessionId ?? ""}`}
+                  stageName={shown.name}
+                  command={input}
+                  ask={stageDef.ask}
+                  verb={unattendedStage ? "Run" : "Start"}
+                  initial={
+                    wordsOf.current[shown.key] ?? entryOfShown?.words ?? ""
+                  }
+                  onStart={composeFrom(shown.key)}
+                  onCancel={entryOfShown ? () => setComposing(null) : undefined}
+                >
+                  {hasRouteOverride(workflow.stages[index]) && (
+                    <RoutePicker
+                      routes={routes}
+                      route={state.route}
+                      onPick={pickRoute}
+                    />
+                  )}
+                </StageComposer>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+                  {shown ? notStartedNote : null}
+                  {entryOfShown &&
+                    shown &&
+                    !entryOfShown.unattended &&
+                    !noSession && (
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => startShown({ fresh: true })}
+                        onClick={() => terminals.resume(shown.key)}
                       >
-                        Start {shown.name} fresh anyway
+                        Resume {shown.name}
                       </Button>
-                    </div>
-                  </>
-                ) : blocked.waiting ? (
-                  <>
-                    <span>
-                      Waiting for {blocked.parentKey} to finish its turn, then{" "}
-                      {shown.name} forks it.
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => startShown({ forkAnyway: true })}
-                      >
-                        Fork now
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setBlocked(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span>
-                      {blocked.parentKey}'s claude is mid-turn. Forking it now
-                      copies the session as saved, without the answer still
-                      being written.
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          setBlocked({ ...blocked, waiting: true })
-                        }
-                      >
-                        Wait for {blocked.parentKey}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => startShown({ forkAnyway: true })}
-                      >
-                        Fork anyway
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setBlocked(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-                {shown ? notStartedNote : null}
-                {entryOfShown &&
-                  shown &&
-                  !entryOfShown.unattended &&
-                  !noSession && (
-                    <Button
-                      size="sm"
-                      onClick={() => terminals.resume(shown.key)}
-                    >
-                      Resume {shown.name}
+                    )}
+                  {rerunnable && shown && (
+                    <Button size="sm" variant="outline" onClick={rerun}>
+                      Re-run {shown.name}
                     </Button>
                   )}
-                {rerunnable && shown && (
-                  <Button size="sm" variant="outline" onClick={rerun}>
-                    Re-run {shown.name}
-                  </Button>
-                )}
-                {!entryOfShown && input !== null && shown && (
-                  <Button size="sm" onClick={rerun}>
-                    {unattendedStage ? "Run" : "Start"} {shown.name}
-                  </Button>
-                )}
-                {hasRouteOverride(workflow.stages[index]) && (
-                  <RoutePicker
-                    routes={routes}
-                    route={state.route}
-                    onPick={pickRoute}
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                  {hasRouteOverride(workflow.stages[index]) && (
+                    <RoutePicker
+                      routes={routes}
+                      route={state.route}
+                      onPick={pickRoute}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
       </div>
     </div>
   );

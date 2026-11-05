@@ -47,6 +47,8 @@ export type Stage = {
   run?: string | null;
   args?: string | null;
   mode?: "interactive" | "unattended";
+  /** Whether Start asks for the user's words: `required` waits for them; left out is optional. */
+  ask?: "required" | "optional" | null;
   session?: "continue" | "fresh" | null;
   produces?: string[];
   done_when?: DoneWhen | null;

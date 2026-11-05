@@ -3,6 +3,7 @@ import {
   allocateStageLeaf,
   parseSessions,
   parseStarts,
+  parseWords,
   reduceTerminals,
   sessionKey,
   STAGE_LEAF_BASE,
@@ -61,6 +62,7 @@ describe("the terminals of a feature", () => {
       leaf: null,
       status: "ended",
       unattended: false,
+      words: "",
     });
   });
 
@@ -72,6 +74,7 @@ describe("the terminals of a feature", () => {
       startedAt: 1,
       leaf: 7,
       unattended: false,
+      words: "",
     });
     expect(s.Grill).toEqual({
       sessionId: A,
@@ -79,6 +82,7 @@ describe("the terminals of a feature", () => {
       leaf: 7,
       status: "running",
       unattended: false,
+      words: "",
     });
   });
 
@@ -90,6 +94,7 @@ describe("the terminals of a feature", () => {
       startedAt: 1,
       leaf: 7,
       unattended: false,
+      words: "",
     });
     const s = reduceTerminals(running, { type: "claude-exited", key: "Grill" });
     expect(s.Grill.status).toBe("ended");
@@ -104,6 +109,7 @@ describe("the terminals of a feature", () => {
       startedAt: 1,
       leaf: 7,
       unattended: false,
+      words: "",
     });
     const s = reduceTerminals(running, { type: "shell-exited", key: "Grill" });
     expect(s.Grill).toMatchObject({
@@ -122,6 +128,7 @@ describe("the terminals of a feature", () => {
         leaf: 7,
         status: "ended",
         unattended: false,
+        words: "",
       },
       Spec: {
         sessionId: B,
@@ -129,6 +136,7 @@ describe("the terminals of a feature", () => {
         leaf: null,
         status: "ended",
         unattended: false,
+        words: "",
       },
     };
     const live = reduceTerminals(ended, {
@@ -167,6 +175,7 @@ describe("the terminals of a feature", () => {
         leaf: 7,
         status: "ended",
         unattended: false,
+        words: "",
       },
     };
     const s = reduceTerminals(ended, {
@@ -176,6 +185,7 @@ describe("the terminals of a feature", () => {
       startedAt: 5,
       leaf: 7,
       unattended: false,
+      words: "",
     });
     expect(s.Spec).toMatchObject({
       sessionId: B,
@@ -193,6 +203,7 @@ describe("the terminals of a feature", () => {
       startedAt: 1,
       leaf: 7,
       unattended: false,
+      words: "",
     });
     const s = reduceTerminals(running, {
       type: "restore",
@@ -200,5 +211,35 @@ describe("the terminals of a feature", () => {
     });
     expect(s.Grill.sessionId).toBe(A);
     expect(s.Spec.sessionId).toBe(B);
+  });
+});
+
+describe("the words a stage was started with", () => {
+  it("keeps them on the entry, and brings them back after a restart", () => {
+    const started = reduceTerminals(
+      {},
+      {
+        type: "start",
+        key: "Grill",
+        sessionId: A,
+        startedAt: 1,
+        leaf: STAGE_LEAF_BASE,
+        unattended: false,
+        words: "a get user API",
+      },
+    );
+    expect(started.Grill.words).toBe("a get user API");
+    const restored = reduceTerminals(
+      {},
+      { type: "restore", ids: { Grill: A, Spec: B }, words: { Grill: "x" } },
+    );
+    expect(restored.Grill.words).toBe("x");
+    expect(restored.Spec.words).toBe("");
+  });
+
+  it("reads only strings from the store", () => {
+    expect(parseWords({ a: "x", b: 3, c: null })).toEqual({ a: "x" });
+    expect(parseWords(["x"])).toEqual({});
+    expect(parseWords(null)).toEqual({});
   });
 });
