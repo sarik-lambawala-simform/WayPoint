@@ -180,5 +180,31 @@ export type LiveRun = { feature: string; run_id: string };
 /** Why "Start the loop" is off: the repo already has a live run, and which feature it is on. */
 export function startBlockedBy(live: LiveRun[]): string | null {
   const first = live[0];
-  return first ? `${first.feature} has a live run in this repo.` : null;
+  if (!first) return null;
+  // A run names its feature a moment after its first state.
+  return first.feature
+    ? `${first.feature} has a live run in this repo.`
+    : "A run is starting in this repo.";
+}
+
+/** Script flags the form sets with a control, named the way the form names them. */
+const FLAG_CONTROLS: Record<string, string> = {
+  "--allow-dirty": "“Start with uncommitted work in the tree”",
+  "--allow-protected": "“Allow on develop, main or master”",
+};
+
+/**
+ * A failed start as the form shows it. The script's refusal says "re-run with --allow-dirty"; in
+ * the form that is a checkbox, so the flag is named by its control.
+ */
+export function startFailure(text: string): string {
+  return text.replace(
+    /re-run with (--allow-[a-z]+)|(--allow-[a-z]+)/g,
+    (m, rerun, bare) => {
+      const flag = rerun ?? bare;
+      const control = FLAG_CONTROLS[flag];
+      if (!control) return m;
+      return rerun ? `tick ${control}` : control;
+    },
+  );
 }

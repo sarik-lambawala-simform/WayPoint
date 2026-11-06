@@ -70,6 +70,55 @@ const SETTLE: Duration = Duration::from_secs(15);
 static RECENT: LazyLock<Mutex<HashMap<PathBuf, Instant>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// The script's stdout and stderr, in the run folder. Before its first state.json they are the
+/// only place a refusal is written: on stderr, but for "Nothing eligible", which is on stdout.
+pub const OUTPUT_FILE: &str = "output.log";
+pub const ERRORS_FILE: &str = "errors.log";
+
+/// How long a start waits for the script's first state.json. Its checks take well under a second.
+const FIRST_STATE_WAIT: Duration = Duration::from_secs(10);
+
+/// How many lines of a refusal the form shows: the end of it, where the script says what to do.
+const REFUSAL_LINES: usize = 60;
+
+/// What the script printed before it exited without a run, as the form shows it: its stderr, or
+/// its stdout when stderr is empty (stdout first prints the board, which is not the reason), with
+/// colour codes and blank edges dropped and the last `REFUSAL_LINES` lines kept.
+pub fn refusal(stdout: &str, stderr: &str) -> String {
+    let output = if stderr.trim().is_empty() {
+        stdout
+    } else {
+        stderr
+    };
+    let mut plain = String::with_capacity(output.len());
+    let mut chars = output.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' && chars.peek() == Some(&'[') {
+            chars.next();
+            // A CSI sequence ends at its first letter.
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else if c != '\r' {
+            plain.push(c);
+        }
+    }
+    let lines: Vec<&str> = plain
+        .trim_matches('\n')
+        .lines()
+        .map(str::trim_end)
+        .collect();
+    let tail = &lines[lines.len().saturating_sub(REFUSAL_LINES)..];
+    let text = tail.join("\n");
+    if text.trim().is_empty() {
+        "The loop script stopped before its run began.".to_string()
+    } else {
+        text
+    }
+}
+
 /// The value of `--run-dir` among `args`, when it names a folder under `logs/` that stays inside
 /// the repo (a relative path with no `..`).
 pub fn run_dir_arg(args: &[String]) -> Option<&str> {
@@ -85,7 +134,7 @@ pub fn run_dir_arg(args: &[String]) -> Option<&str> {
 
 /// The command that runs the script (`script`, relative to the repo root) by `/bin/bash`, its own
 /// shebang: in the repo root, in a session of its own, without the marker that says "inside a
-/// Terax pane" and with its output discarded (the run folder has it).
+/// Terax pane". `start` sends its output to the run folder's `output.log`.
 pub fn detached_command(repo_root: &Path, script: &str, args: &[String]) -> Command {
     let mut cmd = Command::new("/bin/bash");
     cmd.arg(script)
@@ -198,7 +247,11 @@ pub fn start(
         pid_alive: &script_alive,
     };
     if let Some(live) = live_runs(repo_root, &env).first() {
-        return Err(format!("{} already has a live run.", live.feature));
+        // A run names its feature a moment after its first state.
+        return Err(match live.feature.as_str() {
+            "" => "This repo already has a live run, still starting.".to_string(),
+            f => format!("{f} already has a live run."),
+        });
     }
     let folder: PathBuf = repo_root.join(run_dir);
     if folder.exists() {
@@ -234,9 +287,38 @@ pub fn start(
         Some(w) => wsl_command(w, &script, args),
         None => detached_command(repo_root, &script, args),
     };
+    // A file, not a pipe: the script outlives the app, and a pipe nobody reads would kill it.
+    let (output, errors) = (folder.join(OUTPUT_FILE), folder.join(ERRORS_FILE));
+    let file = |p: &Path| fs::File::create(p).map_err(|e| format!("{}: {e}", p.display()));
+    let out = file(&output).map_err(undo)?;
+    let err = file(&errors).map_err(undo)?;
+    cmd.stdout(out).stderr(err);
     let mut child = cmd
         .spawn()
         .map_err(|e| undo(format!("could not start {script}: {e}")))?;
+    // The command holds its own handles on the two files; a refusal deletes the folder, which
+    // Windows refuses while they are open.
+    drop(cmd);
+    // Its first state.json is the run beginning; an exit before it is a refusal (a dirty tree,
+    // nothing eligible), which the form shows in place of a run that never appears. On WSL
+    // `wsl.exe` may return while `setsid`'s fork goes on, so only the deadline settles it there.
+    let state = folder.join("state.json");
+    let deadline = Instant::now() + FIRST_STATE_WAIT;
+    let refused = loop {
+        if state.is_file() {
+            break false;
+        }
+        let exited = matches!(child.try_wait(), Ok(Some(_)));
+        if (exited && wsl.is_none()) || Instant::now() >= deadline {
+            // The script may have written its state as it exited.
+            break exited && !state.is_file();
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    if refused {
+        let read = |p: &Path| fs::read_to_string(p).unwrap_or_default();
+        return Err(undo(refusal(&read(&output), &read(&errors))));
+    }
     // Reaped off-thread so the finished script does not stay a zombie while the app runs.
     std::thread::spawn(move || {
         let _ = child.wait();
@@ -334,7 +416,8 @@ mod tests {
         fs::create_dir_all(script.parent().unwrap()).unwrap();
         fs::write(
             &script,
-            "#!/bin/sh\n{ echo \"term=${TERAX_TERMINAL-unset}\"; pwd; echo \"$@\"; } > seen.txt\n",
+            "#!/bin/sh\n{ echo \"term=${TERAX_TERMINAL-unset}\"; pwd; echo \"$@\"; } > seen.txt\n\
+             echo {} > logs/r1/state.json\n",
         )
         .unwrap();
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
@@ -363,6 +446,107 @@ mod tests {
         assert_eq!(line, "setsid ralph/run-ralph-tickets.sh -y");
     }
 
+    /// A repo whose own script is `body`.
+    #[cfg(unix)]
+    fn repo_with_script(body: &str) -> tempfile::TempDir {
+        let repo = tempfile::tempdir().unwrap();
+        let script = repo.path().join(SCRIPT);
+        fs::create_dir_all(script.parent().unwrap()).unwrap();
+        fs::write(&script, body).unwrap();
+        repo
+    }
+
+    /// The script's preflight (a dirty tree, nothing eligible, a protected branch) exits before
+    /// the first state.json. The start says why, leaves no run folder, and a corrected retry is
+    /// not refused as "started a moment ago".
+    #[cfg(unix)]
+    #[test]
+    fn a_script_that_exits_before_its_first_state_is_a_failed_start_with_its_words() {
+        let repo = repo_with_script(
+            "#!/bin/bash\necho '  01  ready-for-agent'\necho $'\\e[1mWorking tree is dirty.\\e[0m' >&2\n\
+             echo '  M src/a.ts' >&2\nexit 1\n",
+        );
+        let err = start(
+            repo.path(),
+            &args(&["-y", "--run-dir", "logs/r1"]),
+            "",
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(err, "Working tree is dirty.\n  M src/a.ts");
+        assert!(!repo.path().join("logs/r1").exists());
+        let again = start(
+            repo.path(),
+            &args(&["-y", "--run-dir", "logs/r2"]),
+            "",
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(again.starts_with("Working tree is dirty."), "{again}");
+    }
+
+    /// "Nothing eligible ... Exiting." is an exit 0 on stdout, and still no run.
+    #[cfg(unix)]
+    #[test]
+    fn a_script_that_exits_cleanly_with_no_state_did_not_start_a_run() {
+        let repo = repo_with_script(
+            "#!/bin/bash\necho 'Nothing eligible to run in any queued feature. Exiting.'\n",
+        );
+        let err = start(
+            repo.path(),
+            &args(&["-y", "--run-dir", "logs/r1"]),
+            "",
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            "Nothing eligible to run in any queued feature. Exiting."
+        );
+        assert!(!repo.path().join("logs/r1").exists());
+    }
+
+    /// A script that wrote its first state has started: the start returns at once and the run
+    /// folder stays, whatever the script does after.
+    #[cfg(unix)]
+    #[test]
+    fn a_script_that_writes_its_first_state_has_started() {
+        let repo = repo_with_script(
+            "#!/bin/bash\necho '{\"phase\":\"starting\"}' > logs/r1/state.json\nsleep 30\n",
+        );
+        let began = Instant::now();
+        start(
+            repo.path(),
+            &args(&["-y", "--run-dir", "logs/r1"]),
+            "",
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(began.elapsed() < Duration::from_secs(5));
+        assert!(repo.path().join("logs/r1/state.json").is_file());
+    }
+
+    #[test]
+    fn a_refusal_is_stderr_else_stdout_without_colour_codes_blank_edges_or_an_endless_list() {
+        assert_eq!(
+            refusal("the board", "\n\x1b[1;31mNo.\x1b[0m\r\n  because\n\n"),
+            "No.\n  because"
+        );
+        assert_eq!(refusal("Nothing eligible.\n", " \n"), "Nothing eligible.");
+        assert_eq!(
+            refusal("", ""),
+            "The loop script stopped before its run began."
+        );
+        let long: String = (0..100).map(|i| format!("line {i}\n")).collect();
+        let shown = refusal("", &long);
+        assert_eq!(shown.lines().count(), REFUSAL_LINES);
+        assert!(shown.ends_with("line 99"));
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_start_is_refused_without_the_script_or_without_a_run_folder() {
@@ -386,7 +570,7 @@ mod tests {
     }
 
     /// A fake of the app's `ralph` folder: a script that sources its reader from beside itself, as
-    /// the real one does, and records where it ran.
+    /// the real one does, records where it ran, and writes the first state of a run in `logs/r1`.
     #[cfg(unix)]
     fn fake_bundle(dir: &Path, mark: &str) {
         fs::create_dir_all(dir.join("lib")).unwrap();
@@ -395,7 +579,8 @@ mod tests {
             dir.join("run-ralph-tickets.sh"),
             "#!/bin/bash\nRALPH_HOME=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\n\
              source \"$RALPH_HOME/lib/tickets.sh\"\n\
-             { echo \"$LIB_SAYS\"; pwd; echo \"$@\"; } > seen.txt\n",
+             { echo \"$LIB_SAYS\"; pwd; echo \"$@\"; } > seen.txt\n\
+             echo {} > logs/r1/state.json\n",
         )
         .unwrap();
     }

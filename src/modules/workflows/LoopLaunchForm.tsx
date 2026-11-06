@@ -7,6 +7,7 @@ import {
   type LaunchOptions,
   launchLine,
   optionProblems,
+  startFailure,
 } from "./lib/loopLaunch";
 
 type Props = {
@@ -268,17 +269,26 @@ export function LoopLaunchForm({
             title={blocked ?? undefined}
             onClick={onStart}
           >
-            Start the loop
+            {starting ? "Starting…" : "Start the loop"}
           </Button>
           <Button size="xs" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          {(blocked ?? failure) && (
+          {blocked && (
             <span className="text-xs text-destructive" data-testid="blocked">
-              {blocked ?? failure}
+              {blocked}
             </span>
           )}
         </div>
+        {!blocked && failure && (
+          <pre
+            className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-destructive"
+            data-testid="blocked"
+            role="alert"
+          >
+            {startFailure(failure)}
+          </pre>
+        )}
       </div>
     </div>
   );

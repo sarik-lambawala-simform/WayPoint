@@ -1,16 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_LAUNCH,
-  launchArgs,
-  launchLine,
   type LaunchContext,
   type LaunchOptions,
+  launchArgs,
+  launchLine,
   optionProblems,
   relativeTo,
   runDirFor,
   shellQuote,
   startBlockedBy,
   startButtonLabel,
+  startFailure,
 } from "./loopLaunch";
 
 const ctx: LaunchContext = {
@@ -154,6 +155,9 @@ describe("paths and the one-run rule", () => {
     expect(startBlockedBy([{ feature: "other", run_id: "r1" }])).toBe(
       "other has a live run in this repo.",
     );
+    expect(startBlockedBy([{ feature: "", run_id: "r1" }])).toBe(
+      "A run is starting in this repo.",
+    );
     expect(startBlockedBy([{ feature: "demo", run_id: "r1" }])).toBe(
       "demo has a live run in this repo.",
     );
@@ -166,5 +170,26 @@ describe("startButtonLabel", () => {
     expect(startButtonLabel("finished")).toBe("Start the loop");
     expect(startButtonLabel("died")).toBe("Start the loop again");
     expect(startButtonLabel("live")).toBeNull();
+  });
+});
+
+describe("startFailure", () => {
+  it("names the form's checkbox where the script names its flag", () => {
+    expect(
+      startFailure(
+        "Either commit the above, or re-run with --allow-dirty to snapshot these",
+      ),
+    ).toBe(
+      "Either commit the above, or tick “Start with uncommitted work in the tree” to snapshot these",
+    );
+    expect(startFailure("pass\n--allow-protected if you mean it")).toBe(
+      "pass\n“Allow on develop, main or master” if you mean it",
+    );
+  });
+
+  it("leaves other text and unknown flags as they are", () => {
+    expect(startFailure("--allow-other and Nothing eligible.")).toBe(
+      "--allow-other and Nothing eligible.",
+    );
   });
 });
