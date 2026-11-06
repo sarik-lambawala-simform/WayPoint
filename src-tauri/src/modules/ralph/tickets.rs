@@ -317,6 +317,188 @@ pub fn with_status_done(text: &str) -> String {
 /// that line. Only a ticket the agent may not take is closed this way; a symlink is never written
 /// through. The file is replaced whole, so a reader never sees half of it.
 pub fn mark_done(issues_dir: &Path, number: &str) -> Result<String, String> {
+    rewrite_ticket(issues_dir, number, |name, text, _| {
+        if !is_human(name, text) {
+            return Err(format!("ticket {number} is not a human ticket"));
+        }
+        Ok(with_status_done(text))
+    })?;
+    Ok("**Status:** done".to_string())
+}
+
+/// The statuses the Loop panel sets. Never `in-progress`: only the loop sets that, when it picks.
+pub const EDIT_STATUSES: [&str; 4] = ["ready-for-agent", "ready-for-human", "completed", "blocked"];
+
+/// One change from the Loop panel: a new status key, or the whole Blocked by list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TicketEdit {
+    /// The key, and the `**Completed at:**` stamp a `completed` key writes.
+    Status {
+        key: String,
+        completed_at: String,
+    },
+    Blockers(Vec<String>),
+}
+
+static COMPLETED_AT: LazyLock<Regex> =
+    LazyLock::new(|| re(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"));
+static STATUS_LABEL: LazyLock<Regex> = LazyLock::new(|| re(r"^\*\*Status:\*\*[ \t\x0B\x0C]*"));
+
+/// Splits `text` into lines without their `\r`, and that `\r` per line.
+fn lines_of(text: &str) -> Vec<(String, &'static str)> {
+    text.split('\n')
+        .map(|l| (l.strip_suffix('\r').unwrap_or(l).to_string(), eol(l)))
+        .collect()
+}
+
+fn join_lines(lines: &[(String, &'static str)]) -> String {
+    lines
+        .iter()
+        .map(|(l, cr)| format!("{l}{cr}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// `text` with the key of its first `**Status:**` line set to `key`; the note after the key stays.
+/// On `completed`, `**Completed at:** <stamp>` is set (or added under the status line, as the loop
+/// does); off `completed` it is removed, with the blank line the loop put before it.
+pub fn with_status(text: &str, key: &str, completed_at: &str) -> Result<String, String> {
+    let mut lines = lines_of(text);
+    let at = lines
+        .iter()
+        .position(|(l, _)| l.starts_with("**Status:**"))
+        .ok_or("This ticket has no **Status:** line, the only one the loop reads.")?;
+    let (line, cr) = lines[at].clone();
+    let label = STATUS_LABEL
+        .find(&line)
+        .map_or("", |m| m.as_str())
+        .to_string();
+    let value = &line[label.len()..];
+    let old = key_of(value);
+    let label = if label.len() > "**Status:**".len() {
+        label
+    } else {
+        "**Status:** ".into()
+    };
+    lines[at] = (format!("{label}{key}{}", &value[old.len()..]), cr);
+
+    let done = lines
+        .iter()
+        .position(|(l, _)| l.starts_with("**Completed at:**"));
+    if key == "completed" {
+        let stamped = format!("**Completed at:** {completed_at}");
+        match done {
+            Some(i) => lines[i].0 = stamped,
+            None => {
+                lines.insert(at + 1, (String::new(), cr));
+                lines.insert(at + 2, (stamped, cr));
+            }
+        }
+    } else if let Some(i) = done {
+        // The blank line before goes too when the loop added it under the status line, or when a
+        // blank line after still keeps the paragraphs apart.
+        let blank_before = i > 0 && is_blank(&lines[i - 1].0);
+        let loop_added = i > 1 && lines[i - 2].0.starts_with("**Status:**");
+        let blank_after = lines.get(i + 1).is_none_or(|(l, _)| is_blank(l));
+        if blank_before && (loop_added || blank_after) {
+            lines.drain(i - 1..=i);
+        } else {
+            lines.remove(i);
+        }
+    }
+    Ok(join_lines(&lines))
+}
+
+/// `text` with its Blocked by field, wrapped lines too, written as one bold line: `01, 03` or
+/// `None`. A ticket without the field gets one above its status line.
+pub fn with_blockers(text: &str, numbers: &[String]) -> Result<String, String> {
+    let mut lines = lines_of(text);
+    let value = format!(
+        "**Blocked by:** {}",
+        if numbers.is_empty() {
+            "None".to_string()
+        } else {
+            numbers.join(", ")
+        }
+    );
+    if let Some(at) = lines.iter().position(|(l, _)| BLOCKED_BY_LABEL.is_match(l)) {
+        // The same range `blockers_field` reads.
+        let plain = lines[at].0.starts_with("Blocked by:");
+        let mut end = at + 1;
+        while let Some((l, _)) = lines.get(end) {
+            if is_blank(l)
+                || l.starts_with('#')
+                || BOLD_LABEL.is_match(l)
+                || (plain && PLAIN_LABEL.is_match(l))
+            {
+                break;
+            }
+            end += 1;
+        }
+        let cr = lines[at].1;
+        lines.splice(at..end, [(value, cr)]);
+    } else {
+        let at = lines
+            .iter()
+            .position(|(l, _)| l.starts_with("**Status:**"))
+            .ok_or("This ticket has no **Status:** line, the only one the loop reads.")?;
+        let cr = lines[at].1;
+        lines.splice(at..at, [(value, cr), (String::new(), cr)]);
+    }
+    Ok(join_lines(&lines))
+}
+
+/// Writes one panel edit into build ticket `number`. Refuses a wayfinder ticket, a status the
+/// panel does not set, a ticket without a bold status line, and a blocker that is not another
+/// ticket of the folder.
+pub fn edit_ticket(issues_dir: &Path, number: &str, edit: &TicketEdit) -> Result<(), String> {
+    rewrite_ticket(issues_dir, number, |_, text, texts| {
+        if is_wayfinder(text) {
+            return Err("Wayfinder tickets are view only.".into());
+        }
+        match edit {
+            TicketEdit::Status { key, completed_at } => {
+                if !EDIT_STATUSES.contains(&key.as_str()) {
+                    return Err(format!(
+                        "The panel sets {}. Not {key}.",
+                        EDIT_STATUSES.join(", ")
+                    ));
+                }
+                if key == "completed" && !COMPLETED_AT.is_match(completed_at) {
+                    return Err(format!("not a UTC stamp: {completed_at}"));
+                }
+                with_status(text, key, completed_at)
+            }
+            TicketEdit::Blockers(numbers) => {
+                let others: HashSet<&str> = texts
+                    .iter()
+                    .filter(|(n, t)| {
+                        n.as_str() != "00-index.md"
+                            && !n.starts_with(&format!("{number}-"))
+                            && !is_wayfinder(t)
+                    })
+                    .map(|(n, _)| &n[..2])
+                    .collect();
+                let mut sorted: Vec<String> = numbers.clone();
+                sorted.sort();
+                sorted.dedup();
+                if let Some(b) = sorted.iter().find(|b| !others.contains(b.as_str())) {
+                    return Err(format!("{b} is not another build ticket of this feature."));
+                }
+                with_blockers(text, &sorted)
+            }
+        }
+    })
+}
+
+/// Replaces ticket `number` of `issues_dir` with what `edit` makes of its text, through a temp file
+/// and a rename, keeping its permissions. Never writes through a symlink or over invalid UTF-8.
+/// `edit` gets the file name, the text, and every ticket text of the folder.
+fn rewrite_ticket(
+    issues_dir: &Path,
+    number: &str,
+    edit: impl FnOnce(&str, &str, &BTreeMap<String, String>) -> Result<String, String>,
+) -> Result<(), String> {
     if !super::ticket_read::ticket_number(number) {
         return Err(format!("not a ticket number: {number}"));
     }
@@ -326,9 +508,6 @@ pub fn mark_done(issues_dir: &Path, number: &str) -> Result<String, String> {
         .iter()
         .find(|(n, _)| n.starts_with(&prefix))
         .ok_or_else(|| format!("no ticket {number} in {}", issues_dir.display()))?;
-    if !is_human(name, text) {
-        return Err(format!("ticket {number} is not a human ticket"));
-    }
     let path = issues_dir.join(name);
     let meta = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
     if !meta.is_file() {
@@ -338,6 +517,10 @@ pub fn mark_done(issues_dir: &Path, number: &str) -> Result<String, String> {
     let on_disk = std::fs::read(&path).map_err(|e| e.to_string())?;
     if std::str::from_utf8(&on_disk).is_err() {
         return Err(format!("{} is not valid UTF-8", path.display()));
+    }
+    let next = edit(name, text, &texts)?;
+    if next == *text {
+        return Ok(());
     }
     // A name of its own, so two presses never share a temp file, and `create_new` never follows
     // a link left at that name.
@@ -349,7 +532,7 @@ pub fn mark_done(issues_dir: &Path, number: &str) -> Result<String, String> {
         .write(true)
         .create_new(true)
         .open(&tmp)
-        .and_then(|mut f| std::io::Write::write_all(&mut f, with_status_done(text).as_bytes()))
+        .and_then(|mut f| std::io::Write::write_all(&mut f, next.as_bytes()))
         .map_err(|e| e.to_string())?;
     let swap = std::fs::set_permissions(&tmp, meta.permissions())
         .and_then(|()| std::fs::rename(&tmp, &path));
@@ -357,7 +540,7 @@ pub fn mark_done(issues_dir: &Path, number: &str) -> Result<String, String> {
         let _ = std::fs::remove_file(&tmp);
         return Err(e.to_string());
     }
-    Ok("**Status:** done".to_string())
+    Ok(())
 }
 
 /// The ticket dir of a feature as this machine reaches it. A WSL workspace's path is a Linux path
@@ -431,6 +614,123 @@ mod tests {
         assert_eq!(
             std::fs::read_dir(dir.path()).unwrap().count(),
             3,
+            "no temp file is left behind"
+        );
+    }
+
+    const STAMP: &str = "2026-11-05T10:00:00Z";
+
+    #[test]
+    fn with_status_keeps_the_note_and_the_label_spacing() {
+        let t = "# 01 — A\n\n**Status:**   ready-for-agent, parked by the stop\n";
+        assert_eq!(
+            with_status(t, "blocked", STAMP).unwrap(),
+            "# 01 — A\n\n**Status:**   blocked, parked by the stop\n"
+        );
+        assert!(with_status("# 01\nStatus: x\n", "blocked", STAMP).is_err());
+    }
+
+    #[test]
+    fn completed_stamps_completed_at_and_leaving_it_removes_the_stamp() {
+        let t = "# 01\n\n**Status:** ready-for-agent\n\n- [ ] a\n";
+        let done = with_status(t, "completed", STAMP).unwrap();
+        assert_eq!(
+            done,
+            "# 01\n\n**Status:** completed\n\n**Completed at:** 2026-11-05T10:00:00Z\n\n- [ ] a\n"
+        );
+        // The loop's layout round-trips back to the file it started from.
+        assert_eq!(with_status(&done, "ready-for-agent", STAMP).unwrap(), t);
+        // A second completed replaces the stamp instead of adding one.
+        let again = with_status(&done, "completed", "2026-11-06T00:00:00Z").unwrap();
+        assert_eq!(again.matches("**Completed at:**").count(), 1);
+        assert!(again.contains("2026-11-06T00:00:00Z"));
+    }
+
+    #[test]
+    fn a_crlf_ticket_stays_crlf() {
+        let t = "# 01\r\n\r\n**Status:** blocked\r\n";
+        let done = with_status(t, "completed", STAMP).unwrap();
+        assert_eq!(
+            done,
+            "# 01\r\n\r\n**Status:** completed\r\n\r\n**Completed at:** 2026-11-05T10:00:00Z\r\n"
+        );
+        assert_eq!(status_key_of(&done), "completed");
+    }
+
+    #[test]
+    fn with_blockers_rewrites_the_whole_field_and_reads_back() {
+        let t = "# 03\n\n**Blocked by:** 01 — Fork base,\n  02 — Release\n\n**Status:** ready-for-agent\n";
+        let one = with_blockers(t, &["02".into()]).unwrap();
+        assert_eq!(
+            one,
+            "# 03\n\n**Blocked by:** 02\n\n**Status:** ready-for-agent\n"
+        );
+        assert_eq!(blockers_of(&one), ["02"]);
+        let none = with_blockers(t, &[]).unwrap();
+        assert!(none.contains("**Blocked by:** None\n"));
+        assert!(blockers_of(&none).is_empty());
+        // No field yet: one goes above the status line.
+        let added = with_blockers("# 03\n\n**Status:** blocked\n", &["01".into()]).unwrap();
+        assert_eq!(added, "# 03\n\n**Blocked by:** 01\n\n**Status:** blocked\n");
+    }
+
+    #[test]
+    fn edit_ticket_writes_only_what_the_panel_may_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = |n: &str, t: &str| std::fs::write(dir.path().join(n), t).unwrap();
+        w("00-index.md", "# index\n");
+        w(
+            "01-a.md",
+            "# 01 — A\n\n**Blocked by:** None\n\n**Status:** completed\n",
+        );
+        w(
+            "02-b.md",
+            "# 02 — B\n\n**Blocked by:** 01\n\n**Status:** ready-for-agent\n",
+        );
+        w(
+            "03-way.md",
+            "# 03 — W\n\nType: question\n\n**Status:** open\n",
+        );
+        let read = |n: &str| std::fs::read_to_string(dir.path().join(n)).unwrap();
+        let status = |key: &str| TicketEdit::Status {
+            key: key.into(),
+            completed_at: STAMP.into(),
+        };
+
+        assert!(edit_ticket(dir.path(), "02", &status("in-progress"))
+            .unwrap_err()
+            .contains("Not in-progress"));
+        assert!(edit_ticket(dir.path(), "03", &status("blocked"))
+            .unwrap_err()
+            .contains("view only"));
+        let bad_stamp = TicketEdit::Status {
+            key: "completed".into(),
+            completed_at: "yesterday".into(),
+        };
+        assert!(edit_ticket(dir.path(), "02", &bad_stamp).is_err());
+        for bad in [["02"], ["03"], ["00"], ["09"]] {
+            let edit = TicketEdit::Blockers(bad.iter().map(|s| s.to_string()).collect());
+            assert!(edit_ticket(dir.path(), "02", &edit).is_err(), "{bad:?}");
+        }
+        assert_eq!(
+            read("02-b.md"),
+            "# 02 — B\n\n**Blocked by:** 01\n\n**Status:** ready-for-agent\n"
+        );
+
+        edit_ticket(dir.path(), "02", &status("blocked")).unwrap();
+        edit_ticket(
+            dir.path(),
+            "02",
+            &TicketEdit::Blockers(vec!["01".into(), "01".into()]),
+        )
+        .unwrap();
+        assert_eq!(
+            read("02-b.md"),
+            "# 02 — B\n\n**Blocked by:** 01\n\n**Status:** blocked\n"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            4,
             "no temp file is left behind"
         );
     }

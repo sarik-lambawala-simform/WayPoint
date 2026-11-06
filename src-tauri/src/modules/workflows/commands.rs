@@ -7,11 +7,11 @@ use super::progress::{self, ProgressFile, ProgressRead, Update};
 use super::workflow::{shipped_workflow, Vars, Workflow};
 use crate::modules::ralph::launch;
 use crate::modules::ralph::runs::{
-    live_runs, read_loop_view, request_stop, runs_for_ticket, script_alive, Env, LiveRun, LoopView,
-    RunView,
+    edit_lock, live_runs, read_loop_view, request_stop, runs_for_ticket, script_alive, Env,
+    LiveRun, LoopView, RunView,
 };
 use crate::modules::ralph::ticket_read::{read_ticket, ticket_window, TicketRead, TicketWindow};
-use crate::modules::ralph::tickets::{mark_done, read_tickets};
+use crate::modules::ralph::tickets::{edit_ticket, mark_done, read_tickets, TicketEdit};
 use crate::modules::ralph::watch::{unwatch, watch_loop};
 
 const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
@@ -431,6 +431,45 @@ pub async fn workflows_ticket_mark_done(
             return Err(format!("{}: not an absolute path", dir.display()));
         }
         mark_done(&dir.join("issues"), &number)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// A Status or Blocked by edit from the Loop panel. Refused while the feature's live run is
+/// picking or running this ticket, checked here against the run folder, not the page's last view.
+/// `completed_at` is the `YYYY-MM-DDTHH:MM:SSZ` stamp a `completed` status writes.
+#[tauri::command]
+pub async fn workflows_ticket_edit(
+    repo_root: String,
+    feature_dir: String,
+    feature: String,
+    number: String,
+    status: Option<String>,
+    completed_at: Option<String>,
+    blockers: Option<Vec<String>>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let (repo, dir) = (PathBuf::from(repo_root), PathBuf::from(feature_dir));
+        if !repo.is_absolute() || !dir.is_absolute() {
+            return Err("the repo and feature paths must be absolute".to_string());
+        }
+        let edit = match (status, blockers) {
+            (Some(key), None) => TicketEdit::Status {
+                key,
+                completed_at: completed_at.unwrap_or_default(),
+            },
+            (None, Some(numbers)) => TicketEdit::Blockers(numbers),
+            _ => return Err("one edit at a time: a status or the blockers".to_string()),
+        };
+        let env = Env {
+            now: std::time::SystemTime::now(),
+            pid_alive: &script_alive,
+        };
+        if let Some(lock) = edit_lock(&read_loop_view(&repo, &dir, &feature, &env), &number) {
+            return Err(lock.to_string());
+        }
+        edit_ticket(&dir.join("issues"), &number, &edit)
     })
     .await
     .map_err(|e| e.to_string())?

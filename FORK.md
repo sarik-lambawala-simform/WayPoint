@@ -67,6 +67,21 @@ commands are `workflows_loop_view`, `workflows_loop_watch` and `workflows_loop_u
 `LoopRunView.tsx` and the pure `lib/loopRun.ts`. `FeaturePane.tsx` shows the view on a `run: loop` stage and `StageBar.tsx` carries the
 run status chip. `src-tauri/tests/ralph_runs.rs` drives the real script with the fake `claude` and `curl`.
 
+The page is laid out like the Ralph UI's folder view: a header with the feature, the done / needs-you count, a rail of one bar per
+ticket and the run (status, time, cost, Stop, Start); Tickets and Docs tabs; the tickets as a List or a Board by status
+(`LoopTickets.tsx`); and a side panel per ticket or doc (`TicketPanel.tsx`) with a Details tab and a Terminal tab, which replaces the
+Ralph UI's Logs tab. A ticket the loop is running opens on Terminal, any other on Details. Details holds the Status and Blocked by
+edits, the facts (time, cost, blockers, type, completed at) and the ticket's markdown; only web links in it leave the app. The pure
+half is `lib/loopBoard.ts`. The panel is hidden, never unmounted, when closed, and Details lies over the Terminal layer, so a tab
+switch or a close never resizes or restarts a ticket terminal; dragging the panel edge moves a guide and resizes once, on release.
+
+Edits go through `workflows_ticket_edit`, which writes the same lines the loop writes (`ralph::tickets::edit_ticket`: the status key
+with its note kept, `**Completed at:**` stamped on `completed` and removed off it, the Blocked by field as one bold line) through the
+temp-file swap `mark_done` uses. The panel sets `ready-for-agent`, `ready-for-human`, `completed` and `blocked`, never `in-progress`,
+and asks before putting a completed ticket back to `ready-for-agent`. Rust refuses a wayfinder ticket, a ticket without a bold
+status line, a blocker that is not another build ticket, and, read from the run folder at write time (`runs::edit_lock`), any edit
+while the feature's live run is picking or is running that ticket.
+
 ## `.github/workflows/release.yml`
 
 - `create-release` makes the draft release and reads the upstream tag from the "based on release tag" line at the top of this file, so keep that sentence's wording.
@@ -127,8 +142,9 @@ Keep-awake (`ralph/keepawake.rs`, Linux): each loop watch reports whether its ru
 
 ## Ticket terminals
 
-The Loop's ticket list opens a terminal beside it for the chosen ticket (`TicketTerminals.tsx`, state in `lib/ticketTerminals.ts`,
-text in `lib/ticketTerminal.ts`). A ticket's terminal is made when it is first chosen and stays mounted (the Loop layer in
+The Loop panel's Terminal tab shows the chosen ticket's terminal (`TicketTerminals.tsx`, state in `lib/ticketTerminals.ts`,
+text in `lib/ticketTerminal.ts`). A ticket's terminal is made when its Terminal tab is first shown (reading a ticket on Details
+makes none) and stays mounted (the Loop layer in
 `FeaturePane` stays mounted behind other stages once shown). It is a *display leaf*: `markGhosttyDisplayLeaf`,
 `whenGhosttyDisplayReady` and `displayInGhosttySession` in `useGhosttyTerminalSession.ts` (marked `// fork:`, re-exported through
 `terminalSessionApi.ts` and the terminal `index.ts`) let a leaf skip `openPty` and ignore input, and let our module write output into

@@ -298,6 +298,20 @@ pub struct LoopView {
     pub tickets: Vec<TicketRow>,
 }
 
+/// Why the Loop panel may not edit ticket `number` now: the live run is picking a ticket (it
+/// reads every ticket's status) or is running this one (it writes the status itself). None when
+/// the ticket can be edited.
+pub fn edit_lock(view: &LoopView, number: &str) -> Option<&'static str> {
+    let run = view.run.as_ref().filter(|r| r.status == RunStatus::Live)?;
+    if run.phase == "picking" {
+        return Some("The loop is picking the next ticket. Edits wait until it starts one.");
+    }
+    if run.ticket == number {
+        return Some("The loop is running this ticket. Stop the run to change it.");
+    }
+    None
+}
+
 const CUT: &str =
     "A stream was cut before its cost was recorded, so this cost may not be the whole.";
 const DIED_COST: &str = "The run died during this ticket, so its cost was never recorded.";
@@ -637,6 +651,66 @@ mod tests {
             phase: phase.into(),
             ..RunState::default()
         }
+    }
+
+    fn view_with(status: RunStatus, phase: &str, ticket: &str) -> LoopView {
+        LoopView {
+            run: Some(RunView {
+                id: "r".into(),
+                dir: "/r".into(),
+                status,
+                phase: phase.into(),
+                phase_since: String::new(),
+                ticket: ticket.into(),
+                quota_resets_at: String::new(),
+                offline_since: String::new(),
+                exit_code: None,
+                started_at_ms: None,
+                ended_at_ms: None,
+                heartbeat_at_ms: None,
+                tickets_ended: 0,
+                cost: Cost {
+                    usd: 0.0,
+                    partial: None,
+                },
+                launch_line: None,
+                stop_file: "/r/stop".into(),
+                stop_requested: false,
+            }),
+            tickets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_ticket_is_locked_while_the_live_run_picks_or_runs_it() {
+        let no_run = LoopView {
+            run: None,
+            tickets: Vec::new(),
+        };
+        assert_eq!(edit_lock(&no_run, "03"), None);
+        assert!(
+            edit_lock(&view_with(RunStatus::Live, "running", "03"), "03")
+                .unwrap()
+                .contains("running this ticket")
+        );
+        assert_eq!(
+            edit_lock(&view_with(RunStatus::Live, "running", "03"), "04"),
+            None
+        );
+        assert!(
+            edit_lock(&view_with(RunStatus::Live, "picking", "03"), "04")
+                .unwrap()
+                .contains("picking")
+        );
+        // A run that is over locks nothing, whatever ticket it ended on.
+        assert_eq!(
+            edit_lock(&view_with(RunStatus::Died, "running", "03"), "03"),
+            None
+        );
+        assert_eq!(
+            edit_lock(&view_with(RunStatus::Finished, "picking", "03"), "03"),
+            None
+        );
     }
 
     const FRESH: Option<Duration> = Some(Duration::from_secs(2));

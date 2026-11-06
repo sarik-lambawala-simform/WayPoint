@@ -207,7 +207,9 @@ describe("the Loop cell's chip", () => {
         target({ live: [{ feature: "other-feature", run_id: "r1" }] }),
       );
       expect(html).toContain("other-feature has a live run in this repo.");
-      expect(html).toMatch(/<button[^>]*disabled[^>]*>Start the loop/);
+      expect(html).toMatch(
+        /<button[^>]*disabled[^>]*>(?:<svg.*?<\/svg>)?Start the loop/,
+      );
     });
 
     const live = (over: Partial<RunView> = {}) =>
@@ -271,21 +273,78 @@ describe("the Loop cell's chip", () => {
     const withTerminals = (selected: string | null) =>
       renderToStaticMarkup(
         <LoopRunView
-          view={{ run: run(), tickets: [ticket(), ticket({ number: "02" })] }}
+          view={{
+            run: run(),
+            tickets: [ticket(), ticket({ number: "02", name: "02-second.md" })],
+          }}
           terminals={api(selected)}
           feature="f"
         />,
       );
 
-    it("makes every ticket row a button and asks for a choice before one is made", () => {
+    const rows = (html: string) => {
+      const list = html.slice(html.indexOf('aria-label="Tickets"'));
+      return list.slice(0, list.indexOf("</ul>"));
+    };
+
+    it("makes every ticket row a button and opens no panel before one is chosen", () => {
       const html = withTerminals(null);
-      expect(html.match(/<button[^>]*aria-pressed="false"/g)).toHaveLength(2);
-      expect(html).toContain("Choose a ticket to see its terminal.");
+      expect(
+        rows(html).match(/<button[^>]*aria-current="false"/g),
+      ).toHaveLength(2);
+      expect(html).not.toContain("<aside");
     });
 
-    it("marks the chosen ticket", () => {
+    it("marks the chosen ticket and opens its panel", () => {
       const html = withTerminals("02");
-      expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
+      expect(rows(html).match(/aria-current="true"/g)).toHaveLength(1);
+      expect(html).toContain('aria-label="Ticket 02"');
+      expect(html).toContain("issues/02-second.md");
+    });
+
+    it("opens a running ticket on its terminal and any other on its details", () => {
+      const view = {
+        run: run(),
+        tickets: [
+          ticket({ running: true }),
+          ticket({ number: "02", name: "02-b.md" }),
+        ],
+      };
+      const open = (selected: string) =>
+        renderToStaticMarkup(
+          <LoopRunView view={view} terminals={api(selected)} feature="f" />,
+        );
+      expect(open("01")).toMatch(/aria-selected="true"[^>]*>terminal/);
+      expect(open("02")).toMatch(/aria-selected="true"[^>]*>details/);
+    });
+  });
+
+  describe("the board header", () => {
+    it("counts the done tickets and the ones that need a person, and draws a rail bar per ticket", () => {
+      const html = renderToStaticMarkup(
+        <LoopRunView
+          view={{
+            run: null,
+            tickets: [
+              ticket(),
+              ticket({
+                number: "02",
+                name: "02-hitl-x.md",
+                status: "ready-for-human",
+                human: true,
+              }),
+            ],
+          }}
+          feature="demo"
+        />,
+      );
+      expect(html).toContain("1 of 2 build tickets done, 1 needs you");
+      expect(html).toContain("demo / 2 tickets");
+      const rail = html.slice(html.indexOf("Build tickets in run order"));
+      expect(
+        rail.slice(0, rail.indexOf("</ul>")).match(/<button/g),
+      ).toHaveLength(2);
+      expect(html).toContain("needs you");
     });
   });
 });

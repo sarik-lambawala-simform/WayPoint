@@ -189,6 +189,29 @@ export const markTicketDone = (featureDir: string, number: string) =>
     number,
   });
 
+/** One edit from the Loop panel: a status (with the stamp `completed` writes) or the whole Blocked by list. */
+export type TicketChange =
+  | { status: string; completedAt: string }
+  | { blockers: string[] };
+
+/** Writes a Status or Blocked by edit into build ticket `number`; refused while the run picks or runs it. */
+export const editTicket = (
+  repoRoot: string,
+  featureDir: string,
+  feature: string,
+  number: string,
+  change: TicketChange,
+) =>
+  invoke<void>("workflows_ticket_edit", {
+    repoRoot: hostOf(repoRoot),
+    featureDir: hostOf(featureDir),
+    feature,
+    number,
+    status: "status" in change ? change.status : null,
+    completedAt: "status" in change ? change.completedAt : null,
+    blockers: "blockers" in change ? change.blockers : null,
+  });
+
 /** Turns typed into a claude session after `since` (ISO time); null when its transcript is not on this machine. */
 export const sessionTurns = async (
   repoRoot: string,
